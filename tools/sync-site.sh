@@ -59,11 +59,31 @@ echo "新版本 : v$NEW_VER"
 echo "当前   : v${OLD_VER:-（无）}"
 if [ "$NEW_VER" = "$OLD_VER" ]; then
   echo "提示   : 版本号和线上一样。构建戳会自动更新，所以线上仍然能看出是新构建；"
-  echo "         但如果这次改了功能，还是把源码里的 WORKBENCH_VERSION 往上提一档。"
+  echo "         本次功能或修复变化应同步写入更新公告，版本号按发布安排调整。"
 else
   echo "版本   : v${OLD_VER:-?} → v$NEW_VER"
 fi
 echo
+
+# Reject a version bump whose source manifest and inline announcement disagree.
+python3 - "$SOURCE" "$WB_DIR/release.json" "$REPO_ROOT/release.json" <<'PY_NOTES'
+import json,re,sys
+from pathlib import Path
+src=Path(sys.argv[1]).read_text()
+version=re.search(r"const WORKBENCH_VERSION='([^']+)'",src).group(1)
+inline=json.loads(re.search(r'const WORKBENCH_RELEASE=(\{[^\n]+\});',src).group(1))
+source=Path(sys.argv[2])
+if source.exists():
+    manifest=json.loads(source.read_text())
+    if manifest.get('version')!=version or any(manifest.get(k)!=inline.get(k) for k in ('title','notes')):
+        raise SystemExit('✗ 源码 release.json 与页面公告不一致。请先同步版本、标题和公告内容，未复制或提交。')
+previous=Path(sys.argv[3])
+if previous.exists():
+    old=json.loads(previous.read_text())
+    if old.get('version')!=version and all(old.get(k)==inline.get(k) for k in ('title','notes')):
+        raise SystemExit('✗ 版本号已改变，但公告内容没有更新。请补写本次更新说明，未复制或提交。')
+print('✓ 公告一致性检查通过')
+PY_NOTES
 
 # —— 复制 ——
 cp "$SOURCE" index.html
