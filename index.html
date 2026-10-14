@@ -197,7 +197,7 @@ FORM: 高级创作指挥台；已通过交互预览确认。
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
 --><a class="skip-link" href="#main-content">跳到主要内容</a><div id="app" class="app-shell">
 <aside class="sidebar" aria-label="主导航"><a class="brand" href="#home" data-nav="home"><span class="brand-mark">境</span><span><strong>CYF综合工作台</strong><small>AI 角色卡工程台</small></span></a><nav class="nav-list"><button class="nav-item is-active" data-nav="home">创作首页</button><button class="nav-item" data-nav="workspace">角色卡工程</button><button class="nav-item" data-nav="audit">体检与修复</button><button class="nav-item" data-nav="publish">发布与保护</button><button class="nav-item" data-nav="settings">源码与工作区</button></nav><div class="sidebar-note"><strong>本地工程模式</strong><span>卡片、密钥与工作区索引保存在本机；AI 只接收当前任务需要的内容。</span></div></aside>
-<div class="app-main"><header class="topbar"><button class="mobile-menu" type="button">菜单</button><div class="status-strip"><span class="status-chip" id="api-status">API 未连接</span><span class="status-chip" id="baseline-status">RP-Hub 内置基线</span><span class="status-chip" id="workspace-status">未建工作区</span><span class="status-chip" id="version-status" title="工作台版本">v1.0.0</span></div></header><main id="main-content" tabindex="-1">
+<div class="app-main"><header class="topbar"><button class="mobile-menu" type="button">菜单</button><div class="status-strip"><span class="status-chip" id="api-status">API 未连接</span><span class="status-chip" id="baseline-status">RP-Hub 内置基线</span><span class="status-chip" id="workspace-status">未建工作区</span><span class="status-chip" id="version-status" title="工作台版本">v1.1.0</span><span class="status-chip" id="version-build" title="构建戳：日期.sha，用来判断线上是不是最新版">dev</span></div></header><main id="main-content" tabindex="-1">
 <section class="view is-active" data-view="home"><div class="hero"><div><h1>把一张设想，<br>铸成可运行的世界。</h1><p>从一句设想开始。CYF综合工作台会优先参照 RP-Hub 源码与工作区素材，生成可编辑、可体检、可直接导出的角色卡工程。</p><div class="hero-actions"><button class="primary" data-action="new">新建角色卡工程</button><button class="secondary" data-action="import">导入已有卡片</button><input id="file-input" type="file" accept=".json,.png,application/json,image/png" hidden></div></div><aside class="evidence-rail"><span>每次生成都有依据</span><ol><li><b>01</b>理解目标</li><li><b>02</b>检索成熟做法</li><li><b>03</b>生成可撤销补丁</li><li><b>04</b>运行三类审核</li></ol></aside></div><div class="prompt-panel"><label for="goal-input">描述你想进入的角色与世界</label><textarea id="goal-input" rows="4" placeholder="例如：做一张古风悬疑卡，开场要有强钩子；正文 UI 要稳定，不依赖脚本。"></textarea><div class="prompt-foot"><span id="goal-hint">不用先懂字段、正则或变量桥；先说清楚你想玩的体验。</span><button class="primary" data-action="plan">生成制作建议</button></div></div><div class="home-grid"><article><h2>源码优先</h2><p id="baseline-copy">字段、运行时、UI 和导出遇到疑问时，AI 先检索 RP-Hub 源码再回答。</p></article><article><h2>工程资源</h2><p>工作区中的参考卡、图片、代码与设定资料，都可以被读取、预览并用于当前工程。</p></article><article><h2>质量控制</h2><p>运行、体验与提交规则分层检查；问题可定位、可修复，也不会把本地检查冒充绝对过审。</p></article></div><div id="plan-output" class="plan-output" hidden></div></section>
 <section class="view" data-view="workspace"><div class="section-head"><div><h1>卡片工作区</h1><p>结构化编辑，不用在整份 JSON 里找字段。</p></div><div><button class="secondary" data-action="undo">撤销上次修改</button><button class="primary" data-action="save">保存到浏览器</button></div></div><div class="editor-layout"><form id="card-form" class="editor"><label>角色名<input name="name" placeholder="角色名"></label><label>一句话定位<input name="description" placeholder="身份、核心矛盾与体验承诺"></label><label>人物设定<textarea name="personality" rows="7" placeholder="性格、动机、边界、说话方式"></textarea></label><label>场景设定<textarea name="scenario" rows="6" placeholder="当前世界、关系与冲突"></textarea></label><label>开场白<textarea name="first_mes" rows="12" placeholder="支持文本与宿主前端允许的 HTML/CSS"></textarea></label><label>示例对话<textarea name="mes_example" rows="7" placeholder="用几轮对话固定语气与行为边界"></textarea></label></form><aside class="inspector"><h2>工程清单</h2><div id="inventory"></div><h2>世界书</h2><div id="lore-summary"></div><button class="secondary wide" data-action="audit">按过审规则体检</button></aside></div></section>
 <section class="view" data-view="audit"><div class="section-head"><div><h1>质量控制台</h1><p>运行、体验与提交规则并行检查；每个问题都指向具体字段与修复动作。</p></div><button class="primary" data-action="audit">重新体检</button></div><div id="audit-summary" class="audit-summary" aria-live="polite"></div><div class="audit-tabs"><button class="is-active" data-audit-tab="runtime">运行审核</button><button data-audit-tab="quality">质量审核</button><button data-audit-tab="submission">提交审核（过审规则）</button></div><div id="audit-results"></div></section>
@@ -211,12 +211,17 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
   /* 工作台版本号。唯一来源：界面角标与打包脚本都读它，避免再次出现「新版覆盖旧版还分不清」。
-     改版本时只改这一处，然后跑 tools/package.sh 重新打包。 */
-  const WORKBENCH_VERSION='1.0.0';
+     改版本时只改这一处，然后跑 tools/package.sh 重新打包。
+     格式必须严格是 x.y.z——tools/asserts/version.js 用 /^\d+\.\d+\.\d+$/ 校验，
+     所以构建戳不能拼在这里，只能放下面的 WORKBENCH_BUILD。 */
+  const WORKBENCH_VERSION='1.1.0';
+  /* 构建戳：由 tools/sync-site.sh 在同步时自动改写成「日期.sha」，手改这里没有意义。
+     它存在的理由就是版本号看不出来的那件事——线上跑的到底是哪一次构建。 */
+  const WORKBENCH_BUILD='2026.10.14.670f9af';
   /* 注意：工厂函数里没有 root 这个变量（root 只是外层 IIFE 的参数），必须用 globalThis。 */
-  try{globalThis.Zaojing=globalThis.Zaojing||{};globalThis.Zaojing.version=WORKBENCH_VERSION;}catch(_){ }
+  try{globalThis.Zaojing=globalThis.Zaojing||{};globalThis.Zaojing.version=WORKBENCH_VERSION;globalThis.Zaojing.build=WORKBENCH_BUILD;}catch(_){ }
   try{
-    const paintVersion=()=>{const el=document.getElementById('version-status');if(el)el.textContent='v'+WORKBENCH_VERSION;};
+    const paintVersion=()=>{const el=document.getElementById('version-status');if(el)el.textContent='v'+WORKBENCH_VERSION;const eb=document.getElementById('version-build');if(eb)eb.textContent=WORKBENCH_BUILD;};
     if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',paintVersion);else paintVersion();
   }catch(_){ }
 
@@ -1749,12 +1754,12 @@ setTimeout(()=>Z.integratedProtection.refresh(),0);
   const labels = ['角色动机与经历','世界背景与势力','地点与探索','事件与分支','关系与冲突','玩法与状态','线索与信息边界','结局与后果'];
   /* 肉卡类目：4 类，合计有效正文 ≥80000 字（硬标准，审核按这个卡）。briefs 是逐类目写给模型的硬规格，
      必须覆盖剧情卡那套「剧情自然短词 / scanDepth:8 / 人物因果」的默认措辞。 */
-  const MEAT_PLAN={categories:['runtime','profile','play','stage'],labels:['运行规则','人物档案','场景玩法','阶段机（可选）'],targets:[5000,18500,57500,3500],caps:[10000,37000,115000,7000],optional:['stage'],minimum:80000,
+  const MEAT_PLAN={categories:['runtime','profile','play','stage'],labels:['运行规则','人物档案','场景玩法','阶段机（可选）'],targets:[5000,18500,57500,3500],caps:[10000,37000,115000,7000],optional:['stage'],constantBudget:23500,constantCap:44000,playMin:700,playMax:1300,minimum:80000,
     briefs:{
       runtime:'每条 constant:true、position:before_char、keys 留空。写系统运行总控：每轮正文 2200–3500 字且只写可观察内容、禁写角色内心、禁替玩家说话行动感受、首行强制时间戳【YYYY年MM月DD日 HH时MM分】、每轮结尾固定三个行动选项、正文禁破折号、元指令要曲解为角色在场听到的话。3–6 条，合计 5000 字以上。',
       profile:'每条 constant:true、position:before_char、keys 留空。按方法论「人物层功能位」逐位写，标题自拟但功能不能少：人物总档案、外貌与体型硬锚（具体到身高/罩杯/腰围/体重与标志性体征）、性格与行为驱动、语言指纹与话术库（至少 8 条可直接用的台词）、日常勾引行为手册（至少 10 条）、穿衣与视觉规则、性反应阶梯（4–5 档）、身体档案与敏感点、世界观锚点（只写与性爱有关的，不超过 1500 字）。12–16 条，合计 18500 字以上。',
-      play:'每条 constant:false、position:after_char、scanDepth:2。这是肉卡主体，合计 57500 字以上；条数由内容决定，不设上限。keys 必须是 3–4 个自然语言短词，每个不超过 20 字符，不能含标点、换行或元术语（不要用「性爱」「做爱」这类万能词）。每条 300–900 字，要写到：触发情境、角色即时反应（含 2–3 句可直接用的台词）、分步玩法流程（写清身体动作与体位变化）、升级钩子、结束与余韵。玩法覆盖面必须从这张卡自己的文本长出来：她的身份与日常动线、主性癖线与支线性癖、荒谬前提给出的约束、身体硬锚里写过的每个部位、她与玩家的关系阶梯。禁止套用任何固定玩法分类表，不设类别数或条数上限。标题要具体到「在这里发生什么」，只写「浴室」不算。玩法必须新：每一条都要落在 blueprint.playAnchors 上，写成只属于她的场景；换到另一张卡上照样成立的通用清单式玩法不算过关，同一张卡里两条玩法也不得内容雷同。',
-      stage:'可选类目。只有需要「堕落进度」时才写；不需要就返回 {"entries":[]}，不要硬凑。写法：constant:false、position:after_char、scanDepth:2 的 4–6 条 keys 触发条目模拟阶段（不要用变量），keys 用玩家会自然说出的行为词。每条写她对玩家的态度、主动程度、允许的玩法边界、语言变化。'}};
+      play:'触发条目一律 position=at_depth、constant=false；常驻条目只用 before_char/after_char、constant=true。play 每条严格 700–1300 字，8 万字只能靠增加触发条目达成，禁止加长常驻或单条玩法。触发白话 keys 严格 2–4 个、每个 2–6 字、至少一个二字键、全卡零碰撞，至少一个键是本条裸名子串；用本卡行为发生词或专名，禁止喉咙/清醒/羞耻/站立/手指等通用高频词，若必须用泛词则挂 useProbability:true、probability≤60。每条 constant:false、position:at_depth、scanDepth:2。这是肉卡主体，合计 57500 字以上；条数由内容决定，不设上限。keys 必须是 2–4 个 2–6 字白话词，至少一个二字键，不能含标点、换行或元术语（不要用「性爱」「做爱」这类万能词）。每条 700–1300 字，要写到：触发情境、角色即时反应（含 2–3 句可直接用的台词）、分步玩法流程（写清身体动作与体位变化）、升级钩子、结束与余韵。玩法覆盖面必须从这张卡自己的文本长出来：她的身份与日常动线、主性癖线与支线性癖、荒谬前提给出的约束、身体硬锚里写过的每个部位、她与玩家的关系阶梯。禁止套用任何固定玩法分类表，不设类别数或条数上限。标题要具体到「在这里发生什么」，只写「浴室」不算。玩法必须新：每一条都要落在 blueprint.playAnchors 上，写成只属于她的场景；换到另一张卡上照样成立的通用清单式玩法不算过关，同一张卡里两条玩法也不得内容雷同。',
+      stage:'可选类目。只有需要「堕落进度」时才写；不需要就返回 {"entries":[]}，不要硬凑。写法：constant:false、position:at_depth、scanDepth:2 的 4–6 条 keys 触发条目模拟阶段（不要用变量），keys 用玩家会自然说出的行为词。每条写她对玩家的态度、主动程度、允许的玩法边界、语言变化。'}};
   /* 流水线肉卡：蒸馏 🍇 想映衬 16 张成品卡的成熟工艺。
      特点：文案钩子直白炸裂、协议层固定模板、行为链四阶段条目库、
      美化极简（固定三件套：正文容器+对白高光+选项，不加额外高光）、关键词三层体系（玩家短键+AI 自印令牌+泛词兜底）。
@@ -1798,7 +1803,7 @@ setTimeout(()=>Z.integratedProtection.refresh(),0);
 
 条目参数（严格遵守，质检会拒）：
 - keys：2–4 个 2–6 字白话词，全部从本条自己的动作动词里长出来（如口交条：口交/吸屌/含屌/舔屌；肛交条：肛交/屁眼/肛门/后庭）。禁止标点、换行、元术语、万能词（性爱/做爱/亲密/爱）。
-- constant:false、position:after_char、scanDepth:2。
+- constant:false、position:at_depth、scanDepth:2。
 - 每条 700–1300 字。覆盖面：全部体位（口交/69/传教士/后入/骑乘/侧入/站立…）+ 支线性癖（足交/乳交/颜射/灌满/多轮累积/道具…）+ 话术库按心理线分条 + 心理系统（欲望演化/懊悔线…）。
 - 全卡触发 keys 零碰撞：同一个词只归一条条目。
 - 首轮种子：开场白里必须自然埋入至少 3 条行为链的 keys，保证开局就有条目被激活。
@@ -1824,12 +1829,12 @@ setTimeout(()=>Z.integratedProtection.refresh(),0);
 - 禁止每张卡重写协议模板——协议是模具，只有行为链和话术是每卡不同的产品。
 - 禁止删除或改写 scenario 署名句。
 `;
-  const PIPELINE_PLAN={categories:['protocol','profile','play','token'],labels:['协议模板','人物档案','行为链','令牌阶段'],targets:[9000,3500,64000,4500],caps:[18000,7000,128000,9000],optional:[],minimum:80000,
+  const PIPELINE_PLAN={categories:['protocol','profile','play','token'],labels:['协议模板','人物档案','行为链','令牌阶段'],targets:[9000,3500,64000,4500],caps:[18000,7000,128000,9000],optional:[],constantBudget:12500,constantCap:25000,playMin:700,playMax:1300,minimum:80000,
     briefs:{
-      protocol:'按流水线方法论第二节协议六件套逐字复用模板：文风强制（order:-998）、色情化（order:-999）、输出、选择、状态栏、称谓系统×2，外加基础信息与世界观。全部 constant:true、position:after_char、keys 留空，只替换角色名/性癖词/话术。合计 9000 字以上。状态栏模板必须包含阶段令牌发射位（如「堕落值：第X阶段」「瓶口：[状态或无]」），令牌格式与本卡 token 类条目的 keys 逐字对应。',
+      protocol:'按流水线方法论第二节协议六件套逐字复用模板：文风强制（order:-998）、色情化（order:-999）、输出、选择、状态栏、称谓系统×2，外加基础信息与世界观。全部 constant:true、position:after_char、keys 留空，只替换角色名/性癖词/话术。合计 6000–8000 字，禁止为凑总字数加长。状态栏模板必须包含阶段令牌发射位（如「堕落值：第X阶段」「瓶口：[状态或无]」），令牌格式与本卡 token 类条目的 keys 逐字对应。',
       profile:'constant:true、position:after_char。1–2 条极简人物档案：身份/年龄/与玩家关系/处境/身材硬锚（6 个以上具体数字）/性格开关/底线。1500–3500 字，不写长篇，其余交给协议层。',
-      play:'流水线主体。每条=一个行为链：阶段一至阶段四固定格式，每阶段写动作/触感/声音/台词四要素。constant:false、position:after_char、scanDepth:2。keys 必须 2–4 个 2–6 字白话词、从本条动作动词长出来、禁止万能词与标点、全卡零碰撞。每条 700–1300 字，合计 64000 字以上。覆盖：全部体位+支线性癖+话术库（按心理线）+心理系统。开场白必须自然埋入至少 3 条本类条目的 keys。玩法必须新：每条行为链都要落在 blueprint.playAnchors 上，换到另一张卡上照样成立的通用清单不算过关，同一张卡里两条不得内容雷同。',
-      token:'阶段/进度令牌条目。constant:false、position:after_char、scanDepth:2。keys 必须等于状态栏会输出的令牌原文（如「堕落值：第二阶段」「瓶口：堕落值1→2」）。每阶段一条写态度/主动程度/玩法边界/语言变化；瓶口条写跃迁审核标准与回落条件。若本卡无阶段系统返回 {"entries":[]}。'}};
+      play:'触发条目一律 position=at_depth、constant=false；常驻条目只用 before_char/after_char、constant=true。play 每条严格 700–1300 字，8 万字只能靠增加触发条目达成，禁止加长常驻或单条玩法。触发白话 keys 严格 2–4 个、每个 2–6 字、至少一个二字键、全卡零碰撞，至少一个键是本条裸名子串；用本卡行为发生词或专名，禁止喉咙/清醒/羞耻/站立/手指等通用高频词，若必须用泛词则挂 useProbability:true、probability≤60。流水线主体。每条=一个行为链：阶段一至阶段四固定格式，每阶段写动作/触感/声音/台词四要素。constant:false、position:at_depth、scanDepth:2。keys 必须 2–4 个 2–6 字白话词、从本条动作动词长出来、禁止万能词与标点、全卡零碰撞。每条 700–1300 字，合计 64000 字以上。覆盖：全部体位+支线性癖+话术库（按心理线）+心理系统。开场白必须自然埋入至少 3 条本类条目的 keys。玩法必须新：每条行为链都要落在 blueprint.playAnchors 上，换到另一张卡上照样成立的通用清单不算过关，同一张卡里两条不得内容雷同。',
+      token:'阶段/进度令牌条目。constant:false、position:at_depth、scanDepth:2。keys 必须等于状态栏会输出的令牌原文（如「堕落值：第二阶段」「瓶口：堕落值1→2」）。每阶段一条写态度/主动程度/玩法边界/语言变化；瓶口条写跃迁审核标准与回落条件。若本卡无阶段系统返回 {"entries":[]}。'}};
 
   function cardPlan(kind){if(kind==='meat')return MEAT_PLAN;if(kind==='pipeline')return PIPELINE_PLAN;return {categories,labels,targets:categories.map(()=>3000),caps:categories.map(()=>4500),optional:[],minimum:bundle.policy.minimumSubstantiveWorldbookChars,briefs:null};}
   const supportTitle = /^(?:文风|格式|样式|正则|UI|图片|生图|音乐|归档)|文风|写作|描写|输出协议|变量(?:定义|协议|说明|托管)|锚点库|纠偏|短例|自动生图/i;
@@ -2136,10 +2141,10 @@ setTimeout(()=>Z.integratedProtection.refresh(),0);
       }
     };
     if(!card){
-      const foundation=await request('基础设计',`制作一张原创 RP-Hub V3 角色卡，严格遵守用户题材与以下 SKILLS。当前阶段只做基础，不生成世界书长文或代码。只返回 JSON：creative_brief,name,description,personality,scenario,creator_notes,first_mes,mes_example,worldbook:[],regex:[],ui:[],blueprint:{playerRole,coreLoop,stateFields,worldbookPlan:[{category,purpose,targetChars}],playAnchors:[...]}。${cardKind==='meat'?'worldbookPlan 包含 runtime/profile/play/stage 四类，预算合计至少 80000，targetChars 依次不少于 5000/18500/57500/3500。play 类是主体（条数由内容决定，不设上限），stage 类只在需要堕落进度时才填，否则 targetChars 填 0。另需 blueprint.playAnchors：6–10 个只属于这张卡的玩法锚点（她的身份与日常动线、荒谬前提给出的约束、身体硬锚里写过的具体部位、她与玩家的关系阶梯、主性癖线的具体说法），每个 2–12 字，必须具体到别的卡套不上去。制定具体女主、身材硬锚（6 个以上具体数字）、性格开关、主性癖线（分 3–4 档）与可触发玩法清单。creative_brief 必须逐条列出至少 5 条用户没有提过的原创设定（荒谬前提、具体场所、推进机制、她的偏门性癖、反差的具体行为对照），每条写明它怎么改变玩法。用户那句话只是约束条件不是成品：把用户的描述换个说法交回去就是失败。另需 blueprint.craftModules：从【肉卡模块索引】里选 3–8 个 id（数组），作为本卡 ② 阶段要注入的写法模块；选择必须针对这位女主的具体情况，并在 creative_brief 里说明为什么这几个适合她。库里没有她这类女主的模块时，照常写卡，标准不降——标签只是检索的路，不是用途的限制。':cardKind==='pipeline'?'worldbookPlan 包含 protocol/profile/play/token 四类，预算合计至少 80000，targetChars 依次约 9000/3500/64000/4500。另需 blueprint.playAnchors：6–10 个只属于这张卡的玩法锚点（身份与日常动线、原作前提的约束、身体硬锚、关系阶梯、主性癖线的具体说法），每个 2–12 字，必须具体到别的卡套不上去。scenario 必须保留固定署名句【由XX制作，仅在Roleplay Hub发布】。标题用直白感官冲击体：大白话+身体部位+行为+身份禁忌，无遮掩。first_mes 1200–3500 字直接进入情境，结尾 ♠♥♦ 三选项加完整状态栏首刷（含初始令牌），并在正文里自然埋入至少 3 条行为链玩法的关键词（口交/肛交/丝袜等 2 字白话词）。creative_brief 逐条列出至少 5 条用户没提过的原创设定。':'worldbookPlan 包含 character/world/location/event/relationship/mechanic/clue/ending 八类，预算合计至少 24000，每类不少于 2200；制定具体人物、地点、冲突与可玩分支。'}first_mes 为自然剧情文本，不输出 HTML、CSS 或 XML；对白用「」，心理用（），场景行用【地点·时间】，最后给 2–4 条以①②③④开头的选项。\n用户要求：${goal}\n${context}`,obj=>{const d=obj.data||obj;if(typeof d.name!=='string'||!d.name.trim()||typeof d.first_mes!=='string'||!d.first_mes.trim())throw Error('缺少角色名称或开场剧情');if(/<\/?[a-z][^>]*>/i.test(d.first_mes))throw Error('开场必须使用自然文本约定，不输出 HTML 或 XML 标签');if(cardKind==='meat')validateCraftModules(obj);if(cardKind==='meat'&&String(obj.creative_brief||'').trim().length<120)throw Error('创意方案太短：必须逐条列出至少 5 条用户没提过的原创设定，不能把用户那句话换个说法交回来');if(cardKind==='meat'||cardKind==='pipeline'){const pa=Array.isArray(obj.blueprint&&obj.blueprint.playAnchors)?obj.blueprint.playAnchors:[];if(pa.filter(x=>String(x||'').trim().length>=2).length<6)throw Error('blueprint.playAnchors 至少要有 6 个本卡专属玩法锚点（每个 2–12 字），否则玩法会退化成套哪张卡都行的通用清单');}Z.tagContract.assert(d.creator_notes,false);if(uiMode==='none'&&/<\/?(?:rp-|ui_template_updates)/i.test(d.first_mes))throw Error('无UI开场必须为纯文本');});
+      const foundation=await request('基础设计',`制作一张原创 RP-Hub V3 角色卡，严格遵守用户题材与以下 SKILLS。当前阶段只做基础，不生成世界书长文或代码。${cardKind==='pipeline'?'常驻冻结：protocol 合计 6000–8000 字（硬上限 18000），profile 目标 3500 字（硬上限 7000），常驻总额目标不超过 12500 字；play 64000 字需约 50–64 条。':cardKind==='meat'?'常驻冻结：runtime/profile 合计目标不超过 23500 字（硬上限 44000），8 万字靠增加 play/stage 触发条目达成。':''}${cardKind==='meat'||cardKind==='pipeline'?'触发条目一律 position=at_depth、constant=false；常驻条目只用 before_char/after_char、constant=true。play 每条严格 700–1300 字，8 万字只能靠增加触发条目达成，禁止加长常驻或单条玩法。触发白话 keys 严格 2–4 个、每个 2–6 字、至少一个二字键、全卡零碰撞，至少一个键是本条裸名子串；用本卡行为发生词或专名，禁止喉咙/清醒/羞耻/站立/手指等通用高频词，若必须用泛词则挂 useProbability:true、probability≤60。':''}只返回 JSON：creative_brief,name,description,personality,scenario,creator_notes,first_mes,mes_example,worldbook:[],regex:[],ui:[],blueprint:{playerRole,coreLoop,stateFields,worldbookPlan:[{category,purpose,targetChars}],playAnchors:[...]}。${cardKind==='meat'?'worldbookPlan 包含 runtime/profile/play/stage 四类，预算合计至少 80000，targetChars 依次不少于 5000/18500/57500/3500。play 类是主体（条数由内容决定，不设上限），stage 类只在需要堕落进度时才填，否则 targetChars 填 0。另需 blueprint.playAnchors：6–10 个只属于这张卡的玩法锚点（她的身份与日常动线、荒谬前提给出的约束、身体硬锚里写过的具体部位、她与玩家的关系阶梯、主性癖线的具体说法），每个 2–12 字，必须具体到别的卡套不上去。制定具体女主、身材硬锚（6 个以上具体数字）、性格开关、主性癖线（分 3–4 档）与可触发玩法清单。creative_brief 必须逐条列出至少 5 条用户没有提过的原创设定（荒谬前提、具体场所、推进机制、她的偏门性癖、反差的具体行为对照），每条写明它怎么改变玩法。用户那句话只是约束条件不是成品：把用户的描述换个说法交回去就是失败。另需 blueprint.craftModules：从【肉卡模块索引】里选 3–8 个 id（数组），作为本卡 ② 阶段要注入的写法模块；选择必须针对这位女主的具体情况，并在 creative_brief 里说明为什么这几个适合她。库里没有她这类女主的模块时，照常写卡，标准不降——标签只是检索的路，不是用途的限制。':cardKind==='pipeline'?'worldbookPlan 包含 protocol/profile/play/token 四类，预算合计至少 80000，targetChars 依次约 8000/3500/64000/4500。另需 blueprint.playAnchors：6–10 个只属于这张卡的玩法锚点（身份与日常动线、原作前提的约束、身体硬锚、关系阶梯、主性癖线的具体说法），每个 2–12 字，必须具体到别的卡套不上去。scenario 必须保留固定署名句【由XX制作，仅在Roleplay Hub发布】。标题用直白感官冲击体：大白话+身体部位+行为+身份禁忌，无遮掩。first_mes 1200–3500 字直接进入情境，结尾 ♠♥♦ 三选项加完整状态栏首刷（含初始令牌），并在正文里自然埋入至少 3 条行为链玩法的关键词（口交/肛交/丝袜等 2 字白话词）。creative_brief 逐条列出至少 5 条用户没提过的原创设定。':'worldbookPlan 包含 character/world/location/event/relationship/mechanic/clue/ending 八类，预算合计至少 24000，每类不少于 2200；制定具体人物、地点、冲突与可玩分支。'}first_mes 为自然剧情文本，不输出 HTML、CSS 或 XML；对白用「」，心理用（），场景行用【地点·时间】，最后给 2–4 条以①②③④开头的选项。\n用户要求：${goal}\n${context}`,obj=>{const d=obj.data||obj;if(typeof d.name!=='string'||!d.name.trim()||typeof d.first_mes!=='string'||!d.first_mes.trim())throw Error('缺少角色名称或开场剧情');if(/<\/?[a-z][^>]*>/i.test(d.first_mes))throw Error('开场必须使用自然文本约定，不输出 HTML 或 XML 标签');if(cardKind==='meat')validateCraftModules(obj);if(cardKind==='meat'&&String(obj.creative_brief||'').trim().length<120)throw Error('创意方案太短：必须逐条列出至少 5 条用户没提过的原创设定，不能把用户那句话换个说法交回来');if(cardKind==='meat'||cardKind==='pipeline'){const pa=Array.isArray(obj.blueprint&&obj.blueprint.playAnchors)?obj.blueprint.playAnchors:[];if(pa.filter(x=>String(x||'').trim().length>=2).length<6)throw Error('blueprint.playAnchors 至少要有 6 个本卡专属玩法锚点（每个 2–12 字），否则玩法会退化成套哪张卡都行的通用清单');}Z.tagContract.assert(d.creator_notes,false);if(uiMode==='none'&&/<\/?(?:rp-|ui_template_updates)/i.test(d.first_mes))throw Error('无UI开场必须为纯文本');});
       aborted();const obj=Z.generation.jsonFrom(foundation);const base=clone(obj);delete base.worldbook;if(base.data){delete base.data.worldbook;delete base.data.character_book;}card=Z.generation.parseDraft(JSON.stringify(base)).card;
       card.data.character_book.entries=[];const blueprint=obj.blueprint||{};
-      blueprint.worldbookPlan=planSpec.categories.map((category,i)=>{const src=(blueprint.worldbookPlan||[]).find(x=>x.category===category)||{};const raw=Number(src.targetChars);const want=Number.isFinite(raw)?raw:planSpec.targets[i];const floor=(planSpec.optional||[]).includes(category)?0:planSpec.targets[i];return {category,purpose:String(src.purpose||planSpec.labels[i]),targetChars:Math.min(planSpec.caps[i],Math.max(floor,want))};});
+      blueprint.worldbookPlan=planSpec.categories.map((category,i)=>{const src=(blueprint.worldbookPlan||[]).find(x=>x.category===category)||{};const raw=Number(src.targetChars);const want=Number.isFinite(raw)?raw:planSpec.targets[i];const frozen=cardKind==='pipeline'&&category==='protocol'?8000:((cardKind==='pipeline'&&category==='profile')||(cardKind==='meat'&&['runtime','profile'].includes(category)))?planSpec.targets[i]:null;const floor=(planSpec.optional||[]).includes(category)?0:planSpec.targets[i];return {category,purpose:String(src.purpose||planSpec.labels[i]),targetChars:frozen??Math.min(planSpec.caps[i],Math.max(floor,want))};});
       Object.assign(meta(card),{profile:bundle.policy.id,goal,blueprint,uiMode,cardKind,creativeBrief:String(obj.creative_brief||''),coverPrompt:'',integrationVersion:'0.4.0'});
       card.data.uiTemplates=[];card.data.extensions.regex_scripts=[];card.data.extensions.rp_hub_ui_templates=[];
       if(uiMode==='none'&&/<\/?(?:rp-|ui_template_updates)/i.test(card.data.first_mes))throw Error('无UI模式的开场必须是纯文本');
@@ -2208,14 +2213,99 @@ setTimeout(()=>Z.integratedProtection.refresh(),0);
     if(m.effective<m.minimum)problems.push(`有效世界书 ${m.effective} / ${m.minimum} 字`);
     if(m.duplicate)problems.push(`重复段落 ${m.duplicate} 字，需复核`);
     if(m.rows.some(r=>!r.validCategory))problems.push('世界书分类缺失或辅助内容被错误计入');
+    const plan=cardPlan(m.kind||defaultCardKind()), byCat=new Map();
+    for(const e of ((card.data||card).character_book||{}).entries||[]){
+      if(e.enabled===false||e.disable===true||e.disabled===true)continue;
+      const cat=e.extensions?.rp_studio?.category||'(无)';
+      byCat.set(cat,(byCat.get(cat)||0)+(String(e.content||'').match(/[\u4e00-\u9fff]/g)||[]).length);
+    }
+    for(let i=0;i<plan.categories.length;i++){
+      const n=byCat.get(plan.categories[i])||0;
+      if(n>plan.caps[i])problems.push(`类目「${plan.labels[i]}」${n} 字，超上限 ${plan.caps[i]}，必须缩减`);
+      else if(n>plan.targets[i])problems.push(`类目「${plan.labels[i]}」${n} 字，超目标 ${plan.targets[i]}`);
+    }
+    let conChars=0;
+    for(const e of ((card.data||card).character_book||{}).entries||[]){
+      if(e.enabled===false||e.disable===true||e.disabled===true)continue;
+      if(e.constant===true||e.extensions?.constant===true)conChars+=(String(e.content||'').match(/[\u4e00-\u9fff]/g)||[]).length;
+    }
+    if(plan.constantCap&&conChars>plan.constantCap)problems.push(`常驻层 ${conChars} 字，超上限 ${plan.constantCap}，必须缩减`);
+    else if(plan.constantBudget&&conChars>plan.constantBudget)problems.push(`常驻层 ${conChars} 字，超目标 ${plan.constantBudget}`);
     if(hasCover&&!meta(card).coverReview)problems.push('已选封面可继续检查题材与裁切');
     problems.push('目标平台渲染、按钮点击及导入 PNG 的实际验收待完成');
     return problems;
   }
-  /* 关键词五闸门质检器：流水线肉卡防退回核心。
+  /* 关键词闸门 0–11 质检器：流水线肉卡防退回核心。
      闸1 玩家侧键词典（长度/万能词/碰撞） · 闸2 令牌闭环（令牌键必须有状态栏发射位）
      闸3 首轮种子（first_mes 能激活的条目数） · 闸4 本地模拟扫描（令牌按序命中+正文键命中）
      闸5 常驻兜底（泛词入口覆盖） */
+
+/* 高误触词：任何场景的普通叙述都可能自然写出的词。
+   判据来自 skill:references/keyword-design.md §三「泛词键」与
+   rules-wb-architect.md AP-03：跨场景词、日常动作、情绪、通用身体部位、通用名词。
+   不含：性行为/道具/机制专名（那些是本卡专有动作词，安全）。 */
+const MIS_TRIGGER = new Set([
+  /* 通用身体部位 */
+  '喉咙', '额头', '脖子', '肩膀', '手臂', '手腕', '膝盖', '小腿', '脚踝', '手指', '脚趾',
+  '后背', '胸口', '肚子', '脸颊', '嘴唇', '眼睛', '头发', '皮肤', '身体',
+  /* 通用动作 */
+  '站立', '悬空', '站着', '坐下', '坐着', '躺着', '抱着', '靠着', '转身', '低头', '抬头',
+  '伸手', '接住', '靠近', '离开', '走过', '看向', '闭上', '睁开', '咬牙', '点头', '摇头',
+  /* 通用情绪与心理 */
+  '清醒', '羞耻', '懊悔', '反悔', '认账', '嘴硬', '嘴软', '复盘', '清算', '失神', '走神',
+  '紧张', '放松', '犹豫', '动摇', '心慌', '安心', '满足', '空虚',
+  /* 通用体液与生理（泛写，不指特定玩法） */
+  '喷水', '失禁', '打滑', '抹开', '手滑', '发烫', '出汗', '发抖', '痉挛',
+  /* 通用拟声与泛词 */
+  '闷哼', '擦过', '碰到', '滑过', '贴着', '压着', '顶着', '夹着',
+  /* 通用名词 */
+  '东西', '地方', '时候', '样子', '感觉', '声音', '味道', '温度', '问题', '办法',
+]);
+
+/* 概率豁免：挂了 useProbability 且 probability ≤ 60 的条目，泛词键可放行。
+   处方见 keyword-design.md:210 与 rules-wb-architect.md:433。 */
+const PROBABILITY_MAX = 60;
+const isMisTrigger = key => MIS_TRIGGER.has(key);
+
+/* 单轮拉取密度模拟：把常驻层 + 被正文命中的触发条目加起来，
+   数条数与字数。基准见 skill:references/keyword-design.md:215。 */
+const cjk = (s) => (String(s).match(/[\u4e00-\u9fff]/g) || []).length;
+const isToken = (k) => /^(?:[^：]{1,8}：|.*→)/.test(k);
+
+/* verdict 阈值：5-6 健康 / 7-8 可接受 / 10+ 过高 / 30+ 病态 */
+function verdictOf(totalCount) {
+  if (totalCount >= 30) return '病态';
+  if (totalCount >= 10) return '过高';
+  if (totalCount >= 7) return '可接受';
+  return '健康';
+}
+
+function probeDensity(card, turnText) {
+  const d = card.data || card;
+  const entries = (d.character_book || {}).entries || [];
+  const live = entries.filter((e) => e.enabled !== false && e.disable !== true && e.disabled !== true);
+  const con = live.filter((e) => e.constant === true || e.extensions?.constant === true);
+  const trig = live.filter((e) => !(e.constant === true || e.extensions?.constant === true));
+
+  const constChars = con.reduce((a, e) => a + cjk(e.content), 0);
+  const text = turnText ?? d.first_mes ?? '';
+  const pulled = [];
+  for (const e of trig) {
+    const hit = (e.keys || []).filter((k) => !isToken(k) && k.length >= 2 && text.includes(k));
+    if (hit.length) pulled.push({ comment: e.comment || '(未命名)', chars: cjk(e.content), hit });
+  }
+  const pulledChars = pulled.reduce((a, x) => a + x.chars, 0);
+  const totalCount = con.length + pulled.length;
+  const totalChars = constChars + pulledChars;
+  return {
+    constCount: con.length, constChars,
+    pulledCount: pulled.length, pulledChars,
+    totalCount, totalChars,
+    verdict: verdictOf(totalCount),
+    detail: pulled,
+  };
+}
+
   function keywordGates(card){
     const d=card.data||card, entries=(d.character_book||{}).entries||[], out=[];
     const kind=d.extensions&&d.extensions.rp_studio&&d.extensions.rp_studio.cardKind;
@@ -2224,8 +2314,9 @@ setTimeout(()=>Z.integratedProtection.refresh(),0);
     const meat=kind==='meat';
     const isToken=k=>/^(?:[^：]{1,8}：|.*→)/.test(k);
     const UNIVERSAL=['性爱','做爱','亲密','性交','爱','上床','干她','来一发'];
-    const trig=entries.filter(e=>enabled(e)&&!e.constant&&!(e.disable===true));
-    const constText=entries.filter(e=>enabled(e)&&e.constant!==false).map(e=>String(e.content||'')).join('\n');
+    const live=entries.filter(e=>enabled(e)&&e.disable!==true&&e.disabled!==true);
+    const trig=live.filter(e=>!(e.constant===true||e.extensions?.constant===true));
+    const constText=live.filter(e=>e.constant===true||e.extensions?.constant===true).map(e=>String(e.content||'')).join('\n');
     const seedText=[d.first_mes,d.description,d.personality,d.scenario].filter(Boolean).join('\n')+'\n'+constText;
     const owners=new Map(); let tokenKeys=0;
     for(const e of trig){
@@ -2262,7 +2353,93 @@ setTimeout(()=>Z.integratedProtection.refresh(),0);
     if(trig.length>=10&&!broad)out.push({gate:5,severity:'warning',detail:'缺少泛词兜底入口条目（NPC/场所/情绪类超泛词 keys），冷门路径会永远打不开'});
     /* 署名检查（发布合规锚，不可移除） */
     if(!/仅在\s*Roleplay\s*Hub\s*发布/.test(String(d.scenario||'')))out.push({gate:0,severity:'error',detail:'scenario 缺少固定署名句【由XX制作，仅在Roleplay Hub发布】，禁止删除'});
-    return {results:out,seeded,tokenEntries,totalKeys:owners.size};
+    const push=(gate,severity,detail)=>out.push({gate,severity,detail});
+    const cjk=s=>(String(s||'').match(/[\u4e00-\u9fff]/g)||[]).length;
+/* ── 闸9：高误触词 ──────────────────────────────────────────────────
+   通用高频词会让条目在任何场景被拉进来。处方是换成行为发生词，
+   或挂 useProbability + probability ≤60。 */
+for (const e of trig) {
+  const keys = e.keys || [], title = e.comment || '(未命名)';
+  /* 工作台读取原始 extensions 中的概率开关。
+     被退卡上是 useProbability:true + probability:100 → 100 > 60，不豁免，22 个误触词照样报出来。 */
+  const prob = e.extensions?.probability ?? e.probability;
+  const probOk = (e.extensions?.useProbability ?? e.useProbability) === true && typeof prob === 'number' && prob <= PROBABILITY_MAX;
+  if (probOk) continue;
+  const hits = keys.filter((k) => !isToken(k) && MIS_TRIGGER.has(k));
+  if (hits.length) {
+    push(9, 'error', `${title}：key ${hits.map((k) => `「${k}」`).join('')} 是通用高频词，任何场景都会误触发；改成行为发生词，或挂 useProbability + probability≤${PROBABILITY_MAX}`);
+  }
+}
+/* ── 闸10：单轮拉取密度 ──────────────────────────────────────────────
+   把「常驻太多」「误触发」「触发字数多」三个病量化成一个指标。
+   基准：5-6 健康 / 7-8 可接受 / 10+ 过高 / 30+ 病态。 */
+const dens = probeDensity(card);
+if (dens.verdict === '病态') {
+  push(10, 'error', `单轮拉取 ${dens.totalCount} 条 / ${dens.totalChars} 字（病态，基准 5-6 健康、10+ 过高）：常驻 ${dens.constCount} 条 ${dens.constChars} 字 + 命中 ${dens.pulledCount} 条 ${dens.pulledChars} 字`);
+} else if (dens.verdict === '过高') {
+  push(10, 'error', `单轮拉取 ${dens.totalCount} 条 / ${dens.totalChars} 字（过高）：常驻 ${dens.constCount} 条 ${dens.constChars} 字 + 命中 ${dens.pulledCount} 条 ${dens.pulledChars} 字`);
+} else if (dens.verdict === '可接受') {
+  push(10, 'warning', `单轮拉取 ${dens.totalCount} 条 / ${dens.totalChars} 字（可接受但偏高）`);
+}
+/* ── 预算表（逐字对应工作台 PIPELINE_PLAN / MEAT_PLAN）─────────────── */
+const PLAN = {
+  pipeline: { protocol: [9000, 18000], profile: [3500, 7000], play: [64000, 128000], token: [4500, 9000] },
+  meat: { runtime: [5000, 10000], profile: [18500, 37000], play: [57500, 115000], stage: [3500, 7000] },
+};
+const BUDGET = PLAN[meat ? 'meat' : 'pipeline'];
+const CONST_BUDGET = meat ? 23500 : 12500;
+const CONST_CAP = meat ? 44000 : 25000;
+const PLAY_MIN = 700, PLAY_MAX = 1300;   // 工作台 L1802
+
+/* ⚠️ 类目必须走 e._raw.extensions 取。
+   normalizeEntry() 会 `delete merged.extensions` 并按 RUNTIME_FIELDS 白名单过滤，
+   结果 e.extensions 与 e.rp_studio 都是 undefined；但原始条目保留在 e._raw 上。
+   实测：e._raw.extensions.rp_studio.category 覆盖 46/46 条。
+   不要用 e.extensions（undefined），也不要按 comment 建表（虽然此卡 comment 唯一，但不可依赖）。 */
+const catOf = (e) => e.extensions?.rp_studio?.category || '(无)';
+
+/* ── 闸6：常驻预算与类目 caps ───────────────────────────────────────
+   常驻每轮都进上下文，触发不触发就不进，必须分开算。
+   工作台的 caps 只在生成期夹 targetChars（L2142），这里在校验期同时检查目标与硬上限。 */
+const conCjk = dens.constChars;
+if (conCjk > CONST_CAP) push(6, 'error', `常驻层 ${conCjk} 字，超硬上限 ${CONST_CAP}（每轮都注入，必须缩减）`);
+else if (conCjk > CONST_BUDGET) push(6, 'warning', `常驻层 ${conCjk} 字，超目标预算 ${CONST_BUDGET}`);
+for (const [cat, [target, cap]] of Object.entries(BUDGET)) {
+  const n = live.filter((e) => catOf(e) === cat).reduce((a, e) => a + cjk(e.content), 0);
+  if (n > cap) push(6, 'error', `类目 ${cat} ${n} 字，超 cap ${cap}（▲${(n / cap * 100 - 100).toFixed(0)}%）`);
+  else if (n > target) push(6, 'warning', `类目 ${cat} ${n} 字，超 target ${target}`);
+}
+
+/* ── 闸7：位置与常驻一致性（平台硬规定）──────────────────────────── */
+for (const e of live) {
+  const p = e.extensions?.position ?? e.position ?? 'after_char', isCon = e.constant === true || e.extensions?.constant === true;
+  const title = e.comment || '(未命名)';
+  if ((p === 'before_char' || p === 'after_char') && !isCon) push(7, 'error', `${title}：position=${p} 但 constant=false；平台规定这两个位置必须常驻，触发条目应放 at_depth`);
+  if (p === 'at_depth' && isCon) push(7, 'error', `${title}：position=at_depth 但 constant=true；平台规定 at_depth 必须 constant=false`);
+  if (!['before_char', 'after_char', 'at_depth'].includes(p)) push(7, 'error', `${title}：position=${p} 非法`);
+}
+
+/* ── 闸8：keys 规范（2–4 个 2–6 字白话词，至少一个二字键）────────── */
+for (const e of trig) {
+  const keys = e.keys || [], title = e.comment || '(未命名)';
+  const plain = keys.filter((k) => !isToken(k));
+  if (!plain.length) continue;
+  if (plain.length < 2 || plain.length > 4) push(8, 'error', `${title}：白话 keys ${plain.length} 个（${plain.join('/')}），规范要求 2–4 个`);
+  const invalid = plain.filter((k) => /[^\p{L}\p{N}]/u.test(k) || /世界书|系统提示词|输出格式|触发词|关键词/.test(k));
+  if (invalid.length) push(8, 'error', `${title}：key 含标点、空白或元术语：${invalid.join('/')}`);
+  const tooLong = plain.filter((k) => k.length < 2 || k.length > 6);
+  if (tooLong.length) push(8, 'error', `${title}：key 长度超 2–6 字：${tooLong.join('/')}`);
+  if (!plain.some((k) => k.length === 2)) push(8, 'error', `${title}：没有任何二字键，玩家随口说的短词打不开它`);
+}
+
+/* ── 闸11：玩法条目字数（700–1300）────────────────────────────────
+   8 万字门槛必须靠加条目达成，不能靠拉长单条。 */
+for (const e of live.filter((x) => catOf(x) === 'play')) {
+  const n = cjk(e.content), title = e.comment || '(未命名)';
+  if (n < PLAY_MIN) push(11, 'warning', `${title}：${n} 字，低于玩法条目下限 ${PLAY_MIN}`);
+  if (n > PLAY_MAX) push(11, 'error', `${title}：${n} 字，超玩法条目上限 ${PLAY_MAX}；8 万字应靠加条目达成，不要拉长单条`);
+}
+    return {results:out,seeded,tokenEntries,totalKeys:owners.size,conChars:dens.constChars,densCount:dens.totalCount,densChars:dens.totalChars};
   }
   /* 玩法新闸门：八万字管「量」，这道闸管「质」——玩法必须是这张卡自己长出来的。
      判四件事：
@@ -2270,13 +2447,13 @@ setTimeout(()=>Z.integratedProtection.refresh(),0);
        ② 两条玩法正文近似（8-gram Jaccard ≥ 0.45）= 换了个标题的复制
        ③ 玩法没落在 blueprint.playAnchors 上 = 套哪张卡都行，不是新玩法
        ④ 过半玩法用同一句式开头 = 模板填空
-     只在肉卡与流水线肉卡生效，常规卡完全不受影响；结果只进质量报告，不拦生成。 */
+     三种卡型都必须有玩法；常规卡的 event/mechanic 也计入。error 进入 runtime 并拦截导出。 */
   function playNoveltyGate(card){
     const d=card.data||card, entries=(d.character_book||{}).entries||[], out=[];
     const kind=d.extensions&&d.extensions.rp_studio&&d.extensions.rp_studio.cardKind;
-    if(kind!=='meat'&&kind!=='pipeline')return {results:out,playCount:0,anchorHit:0,anchorTotal:0};
-    const plays=entries.filter(e=>enabled(e)&&e.extensions&&e.extensions.rp_studio&&e.extensions.rp_studio.category==='play');
-    if(!plays.length)return {results:[{gate:6,severity:'error',detail:'整张卡没有任何玩法条目（category:play），没有玩法可谈'}],playCount:0,anchorHit:0,anchorTotal:0};
+    const playCategories=kind==='meat'||kind==='pipeline'?['play']:['play','event','mechanic'];
+    const plays=entries.filter(e=>enabled(e)&&e.disable!==true&&e.disabled!==true&&playCategories.includes(e.extensions?.rp_studio?.category));
+    if(!plays.length)return {results:[{gate:6,severity:'error',detail:'整张卡没有任何玩法条目（play；常规卡也可用 event/mechanic），没有玩法可谈'}],playCount:0,anchorHit:0,anchorTotal:0};
     const titleOf=e=>String(e.comment||e.name||'(未命名)');
     /* 只留实义字符，标点和换行差异不该算成两种玩法 */
     const norm=t=>String(t||'').replace(/[^\u4e00-\u9fff\u3400-\u4dbfa-zA-Z0-9]/g,'');
@@ -2334,13 +2511,13 @@ setTimeout(()=>Z.integratedProtection.refresh(),0);
       /* 肉卡也过同一套关键词闸门：万能词/共用 key/死键/署名照旧报红，
          只有「首轮种子」按肉卡调成提醒（见 keywordGates 里的 meat 分支）。 */
       const kg=keywordGates(card), tag=kind==='meat'?'MEAT_GATE_':'PIPELINE_GATE_', label=kind==='meat'?'肉卡关键词闸门':'关键词闸门';
-      for(const g of kg.results)result.quality.push({group:'quality',severity:g.severity,code:tag+g.gate,title:label+g.gate+(g.gate?'':'（署名）'),detail:g.detail});
-      result.quality.push({group:'quality',severity:'info',code:tag+'SUMMARY',title:label+'质检摘要',detail:'触发 keys '+kg.totalKeys+' 个 · 首轮可激活 '+kg.seeded+' 条 · 令牌条目 '+kg.tokenEntries+' 条'});
+      for(const g of kg.results)result.runtime.push({group:'runtime',severity:g.severity,code:tag+g.gate,title:label+g.gate+(g.gate?'':'（署名）'),detail:g.detail});
+      result.quality.push({group:'quality',severity:'info',code:tag+'SUMMARY',title:label+'质检摘要',detail:'触发 keys '+kg.totalKeys+' 个 · 首轮可激活 '+kg.seeded+' 条 · 令牌条目 '+kg.tokenEntries+' 条 · 常驻 '+kg.conChars+' 字 · 单轮拉取 '+kg.densCount+' 条 / '+kg.densChars+' 字'});
       /* 玩法新：与关键词闸门并列的硬标准，玩法不能是通用清单 */
       const pn=playNoveltyGate(card), nlabel=kind==='meat'?'肉卡玩法新':'流水线玩法新';
-      for(const g of pn.results)result.quality.push({group:'quality',severity:g.severity,code:tag+g.gate,title:nlabel+'闸门',detail:g.detail});
+      for(const g of pn.results)result.runtime.push({group:'runtime',severity:g.severity,code:tag+g.gate,title:nlabel+'闸门',detail:g.detail});
       result.quality.push({group:'quality',severity:'info',code:tag+'NOVELTY',title:nlabel+'摘要',detail:'玩法条目 '+pn.playCount+' 条 · 落在本卡锚点上的 '+(pn.anchorTotal?pn.anchorHit+'/'+pn.playCount:'无锚点可核对')+' · 锚点 '+pn.anchorTotal+' 个'});
-    }else if((card.data||card).extensions?.rp_studio?.profile===bundle.policy.id){const m=measure(card);result.quality=result.quality.filter(x=>x.code!=='LORE_RATIO_HIGH');for(const detail of issues(card,!!meta(card).coverSelected))result.quality.push({group:'quality',severity:detail.includes('世界书')||detail.includes('分类')?'error':'warning',code:'RP_FULL_CARD_PENDING',title:'完整卡验收待完成',detail});}return result;};
+    }else {const pn=playNoveltyGate(card);for(const g of pn.results)result.runtime.push({group:'runtime',severity:g.severity,code:'PLAY_NOVELTY',title:'玩法检查',detail:g.detail});if((card.data||card).extensions?.rp_studio?.profile===bundle.policy.id){const m=measure(card);result.quality=result.quality.filter(x=>x.code!=='LORE_RATIO_HIGH');for(const detail of issues(card,!!meta(card).coverSelected))result.quality.push({group:'quality',severity:detail.includes('世界书')||detail.includes('分类')?'error':'warning',code:'RP_FULL_CARD_PENDING',title:'完整卡验收待完成',detail});}}return result;};
   Z.fullCard={bundle,measure,cardPlan,validateCraftModules,meatModulesFor,skillContext,generate,displayRules,installDisplay,issues,meta,esc,autoCover,imageSettings,digest,localCheck,keywordGates,playNoveltyGate,stamp,hasStamp,HUB_WATERMARK};
   document.addEventListener('DOMContentLoaded',()=>{
     const h=Z.integrationHost;if(!h)return;
@@ -3590,8 +3767,14 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
     if(x==='refresh-ui-preview')refreshUiPreview(a.dataset.index);
     if(x==='generate-diff')generateDiff();if(x==='apply-diff')await applySelectedDiff();if(x==='stop-stream'&&streamController)streamController.abort();
     if(x==='audit')runAuditNow();
+    if(x==='export-json'||x==='export-png'){
+      const candidate=collectForm(),allFindings=Object.values(Z.audit.runAll(candidate)).flat(),blockers=allFindings.filter(x=>x.severity==='error');
+      const profile=candidate.data?.extensions?.rp_studio, m=Z.fullCard.measure(candidate);
+      const invalidWorldbook=profile?.profile===Z.fullCard.bundle.policy.id&&(m.effective<m.minimum||m.duplicate||m.rows.some(r=>!r.validCategory));
+      if(blockers.length||invalidWorldbook)return toast(`质检台未全绿：${blockers.length||1} 项需修复（首个：${blockers[0]?blockers[0].title+'——'+String(blockers[0].detail).slice(0,60):'世界书字数/分类'}）；点「重新体检」查看全部`);
+    }
     if(x==='export-json'){save('导出前保存');download(Z.card.exportJson(Z.fullCard.stamp(ws.card)),(normalized().name||'角色卡')+'.json','application/json')}
-    if(x==='export-png'){const candidate=collectForm(),profile=candidate.data?.extensions?.rp_studio;if(profile?.profile===Z.fullCard.bundle.policy.id){const m=Z.fullCard.measure(candidate);if(m.effective<m.minimum||m.duplicate||m.rows.some(r=>!r.validCategory)||Z.audit.runAll(candidate).runtime.some(x=>x.severity==='error'))return toast('请通过运行检查并补足有效世界书；封面可稍后添加，不影响 JSON 或无封面版 PNG 导出。')}if(ws.sourceType==='png'&&!sourceAvatar)return toast('原封面尚未恢复，请稍后重试或重新导入 PNG');const name=(normalized().name||'角色卡')+'.png',target=await requestSaveTarget(name,'image/png');if(target.mode==='cancelled')return;save('导出前保存');a.disabled=true;const oldLabel=a.textContent;a.textContent='正在生成…';try{const cleanBase=await Z.pngExport.cleanBasePng(sourceAvatar),bytes=await Z.integratedProtection.exportPng(Z.fullCard.stamp(ws.card),cleanBase),mode=await saveBytes(bytes,name,'image/png',target);toast(mode==='direct'?'PNG 已安全保存（防盗信息已保留）':'PNG 已导出（防盗信息已保留）')}catch(error){toast('PNG 导出失败：'+error.message)}finally{a.disabled=false;a.textContent=oldLabel}}
+    if(x==='export-png'){if(ws.sourceType==='png'&&!sourceAvatar)return toast('原封面尚未恢复，请稍后重试或重新导入 PNG');const name=(normalized().name||'角色卡')+'.png',target=await requestSaveTarget(name,'image/png');if(target.mode==='cancelled')return;save('导出前保存');a.disabled=true;const oldLabel=a.textContent;a.textContent='正在生成…';try{const cleanBase=await Z.pngExport.cleanBasePng(sourceAvatar),bytes=await Z.integratedProtection.exportPng(Z.fullCard.stamp(ws.card),cleanBase),mode=await saveBytes(bytes,name,'image/png',target);toast(mode==='direct'?'PNG 已安全保存（防盗信息已保留）':'PNG 已导出（防盗信息已保留）')}catch(error){toast('PNG 导出失败：'+error.message)}finally{a.disabled=false;a.textContent=oldLabel}}
     if(x==='protect-card'){if(streamController)return toast('请先等待当前 AI 任务完成');const author=$('#author-input').value.trim();if(!author)return toast('请先填写作者署名');a.disabled=true;try{const current=collectForm(),next=await Z.integratedProtection.apply(Z.fullCard.stamp(current),author,$('#rp-protection-code').value.trim());await saveSnapshot('加入防盗前',current);Z.workspace.saveCard(ws,next,'加入 1.6 防盗');Z.workspace.persist(ws);renderWorkspace();document.dispatchEvent(new Event('rp-card-changed'));toast('已加入 1.6 防盗，直接导出 PNG 即可')}catch(error){toast('加入防盗失败：'+error.message)}finally{a.disabled=false}}if(x==='sign'){const author=$('#author-input').value.trim();if(!author)return toast('请先填写作者署名');Z.workspace.saveCard(ws,Z.protection.sign(collectForm(),author),'写入署名软锁');Z.workspace.persist(ws);document.dispatchEvent(new Event('rp-card-changed'));toast('已写入署名')}
     if(x==='save-settings'){const cfg=settingsForm();if(!cfg.model)return toast('请先读取并选择模型');localStorage.setItem('zaojingtai.settings',JSON.stringify(cfg));syncModelControls(Z.modelControl.readCache(localStorage),cfg.model);renderStatus();toast('连接设置已保存在本机')}
     if(x==='test-api'){const cfg=settingsForm();if(!cfg.key)return toast('请填写 API Key');a.disabled=true;try{const data=await Z.api.listModels(cfg),models=Z.api.extractModels(data);if(!models.length)throw new Error('接口没有返回可选模型');const current=settings().model,selected=models.includes(current)?current:models[0];Z.modelControl.updateSettingsModel(localStorage,selected);populateModels(models,selected,true);toast('已读取 '+models.length+' 个模型');$('#api-status').textContent='模型列表已读取，可在任意 AI 输入区实时切换'}catch(err){toast(err.message)}finally{a.disabled=false}}
