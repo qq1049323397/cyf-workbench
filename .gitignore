@@ -1,0 +1,5 @@
+# 「试玩当前卡片」用的运行时，由 tools/install-runtime.sh 本地生成，不入库
+RP-Hub-main/
+
+# 探针临时文件
+.probe-http-*.html
