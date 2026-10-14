@@ -145,9 +145,10 @@
   async function openAddCharacterMenu() {
     var add = buttonMatching(/添加角色卡/) || buttonMatching(/^添加$/);
     if (!add) {
-      // 导航按钮的 title 和文本都是「角色卡管理」，拼起来是「角色卡管理 角色卡管理」，
-      // 所以这里只能做包含匹配，不能做全等。
-      var nav = buttonMatching(/角色卡管理/);
+      // RP-Hub 1.8.9 聊天页上这个入口的文案是「前往角色管理」（title 为空），
+      // 早期版本叫「角色卡管理」。两个都认，别写死一个。
+      // 实测：只匹配 /角色卡管理/ 会在这里 return false，导入直接报「找不到入口」。
+      var nav = buttonMatching(/前往角色管理/) || buttonMatching(/角色卡管理/);
       if (!nav) return false;
       nav.click();
       add = await waitFor(function () {
