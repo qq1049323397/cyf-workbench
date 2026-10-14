@@ -26,6 +26,9 @@ cd "$REPO_ROOT"
 
 SOURCE="${1:-${SOURCE:-/home/ubuntu/RP-Hub/CYF综合工作台/CYF综合工作台.html}}"
 [ -f "$SOURCE" ] || { echo "✗ 找不到工作台源码: $SOURCE" >&2; echo "  用法: tools/sync-site.sh <路径>" >&2; exit 2; }
+WB_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+RUNTIME_SRC="$WB_DIR/RP-Hub-main"
+RUNTIME_DST="$REPO_ROOT/RP-Hub-main"
 
 read_version() {
   grep -oE "const WORKBENCH_VERSION='[^']+'" "$1" 2>/dev/null | head -1 | sed "s/.*'\(.*\)'/\1/"
@@ -62,6 +65,23 @@ cp "$SOURCE" index.html
 chmod 644 index.html
 echo "✓ 已更新 index.html（$(du -h index.html | cut -f1)）"
 
+# —— 同步运行时 ——
+# index.html 只是外壳，真正跑卡的 RP-Hub-main/ 也得跟着走，否则线上试玩永远停在旧版。
+# 踩过的坑：桥的「前往角色管理」修复只提交进了源码仓库，部署仓库的桥还是旧的，
+# 线上导入角色卡照样报「找不到入口」——因为这里原来只 cp 了 index.html。
+# 用 --delete 让源里删掉的文件在部署仓库里也消失，免得旧文件残留。
+if [ -d "$RUNTIME_SRC" ]; then
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete "$RUNTIME_SRC/" "$RUNTIME_DST/"
+  else
+    rm -rf "$RUNTIME_DST"
+    cp -a "$RUNTIME_SRC" "$RUNTIME_DST"
+  fi
+  echo "✓ 已同步运行时 RP-Hub-main/（$(find "$RUNTIME_DST" -type f | wc -l) 个文件，$(du -sh "$RUNTIME_DST" | cut -f1)）"
+else
+  echo "⚠ 源码旁边没有 RP-Hub-main/，跳过运行时同步（线上试玩会缺运行时）" >&2
+fi
+
 # —— 戳构建戳 ——
 # 源码里是 'dev'，发布出去的必须是「日期.sha」。这一步不能省：
 # 少了它，线上角标就永远停在 dev，版本号又看不出新旧，又回到分不清部署的处境。
@@ -78,7 +98,6 @@ echo
 
 # —— 发布前检查 ——
 if [ "${NO_VERIFY:-0}" != "1" ]; then
-  WB_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
   if [ -x "$WB_DIR/tools/probe-http.sh" ] && [ -f "$WB_DIR/tools/asserts/version.js" ]; then
     echo "→ 检查：HTTP 下能否正常启动、版本角标对不对"
     if "$WB_DIR/tools/probe-http.sh" "$REPO_ROOT" "$WB_DIR/tools/asserts/version.js" 30000 >/tmp/sync-verify.log 2>&1; then
@@ -101,12 +120,12 @@ if [ "${NO_VERIFY:-0}" != "1" ]; then
 fi
 
 # —— 提交推送 ——
-if git diff --quiet -- index.html && git diff --cached --quiet -- index.html; then
-  echo "index.html 内容和已提交的一模一样，没什么要提交的。"
+if git diff --quiet -- index.html RP-Hub-main && git diff --cached --quiet -- index.html RP-Hub-main; then
+  echo "index.html 和 RP-Hub-main/ 的内容跟已提交的一模一样，没什么要提交的。"
   exit 0
 fi
 
-git add index.html
+git add index.html RP-Hub-main
 MSG="${MSG:-site: 更新到 v$NEW_VER}"
 git commit -q -m "$MSG"
 echo "✓ 已提交: $MSG"
