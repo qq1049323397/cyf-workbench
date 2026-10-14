@@ -242,9 +242,10 @@ FIRST VIEWPORT: 左侧深色导航固定，右侧用大标题、创作输入和�
 FORM: 高级创作指挥台；已通过交互预览确认。
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
 --><a class="skip-link" href="#main-content">跳到主要内容</a><div id="app" class="app-shell">
-<aside class="sidebar" aria-label="主导航"><a class="brand" href="#home" data-nav="home"><span class="brand-mark">境</span><span><strong>CYF综合工作台</strong><small>AI 角色卡工程台</small></span></a><nav class="nav-list"><button class="nav-item is-active" data-nav="home">创作首页</button><button class="nav-item" data-nav="workspace">角色卡工程</button><button class="nav-item" data-nav="audit">体检与修复</button><button class="nav-item" data-nav="publish">发布与保护</button><button class="nav-item" data-nav="settings">源码与工作区</button></nav><div class="sidebar-note"><strong>本地工程模式</strong><span>卡片、密钥与工作区索引保存在本机；AI 只接收当前任务需要的内容。</span></div></aside>
-<div class="app-main"><header class="topbar"><button class="mobile-menu" type="button">菜单</button><div class="status-strip"><span class="status-chip" id="api-status">API 未连接</span><span class="status-chip" id="baseline-status">RP-Hub 内置基线</span><span class="status-chip" id="workspace-status">未建工作区</span><span class="status-chip" id="version-status" title="工作台版本">v1.2.4</span><span class="status-chip" id="version-build" title="构建戳：日期.sha，用来判断线上是不是最新版">dev</span></div></header><main id="main-content" tabindex="-1">
-<section class="view is-active" data-view="home"><div class="hero"><div><h1>把一张设想，<br>铸成可运行的世界。</h1><p>从一句设想开始。CYF综合工作台会优先参照 RP-Hub 源码与工作区素材，生成可编辑、可体检、可直接导出的角色卡工程。</p><div class="hero-actions"><button class="primary" data-action="new">新建角色卡工程</button><button class="secondary" data-action="import">导入已有卡片</button><input id="file-input" type="file" accept=".json,.png,application/json,image/png" hidden></div></div><aside class="evidence-rail"><span>每次生成都有依据</span><ol><li><b>01</b>理解目标</li><li><b>02</b>检索成熟做法</li><li><b>03</b>生成可撤销补丁</li><li><b>04</b>运行三类审核</li></ol></aside></div><div class="prompt-panel"><label for="goal-input">描述你想进入的角色与世界</label><textarea id="goal-input" rows="4" placeholder="例如：做一张古风悬疑卡，开场要有强钩子；正文 UI 要稳定，不依赖脚本。"></textarea><div class="prompt-foot"><span id="goal-hint">不用先懂字段、正则或变量桥；先说清楚你想玩的体验。</span><button class="primary" data-action="plan">生成制作建议</button></div></div><div class="home-grid"><article><h2>源码优先</h2><p id="baseline-copy">字段、运行时、UI 和导出遇到疑问时，AI 先检索 RP-Hub 源码再回答。</p></article><article><h2>工程资源</h2><p>工作区中的参考卡、图片、代码与设定资料，都可以被读取、预览并用于当前工程。</p></article><article><h2>质量控制</h2><p>运行、体验与提交规则分层检查；问题可定位、可修复，也不会把本地检查冒充绝对过审。</p></article></div><div id="plan-output" class="plan-output" hidden></div></section>
+<aside class="sidebar" aria-label="主导航"><a class="brand" href="#home" data-nav="home"><span class="brand-mark">境</span><span><strong>CYF综合工作台</strong><small>AI 角色卡工程台</small></span></a><nav class="nav-list"><button class="nav-item is-active" data-nav="home">创作首页</button><button class="nav-item" data-nav="generation">制卡进度</button><button class="nav-item" data-nav="workspace">角色卡工程</button><button class="nav-item" data-nav="audit">体检与修复</button><button class="nav-item" data-nav="publish">发布与保护</button><button class="nav-item" data-nav="settings">源码与工作区</button></nav><div class="sidebar-note"><strong>本地工程模式</strong><span>卡片、密钥与工作区索引保存在本机；AI 只接收当前任务需要的内容。</span></div></aside>
+<div class="app-main"><header class="topbar"><button class="mobile-menu" type="button">菜单</button><div class="status-strip"><span class="status-chip" id="api-status">API 未连接</span><span class="status-chip" id="baseline-status">RP-Hub 内置基线</span><span class="status-chip" id="workspace-status">未建工作区</span><span class="status-chip" id="version-status" title="工作台版本">v1.2.5</span><span class="status-chip" id="version-build" title="构建戳：日期.sha，用来判断线上是不是最新版">dev</span></div></header><main id="main-content" tabindex="-1">
+<section class="view is-active" data-view="home"><div class="hero"><div><h1>把一张设想，<br>铸成可运行的世界。</h1><p>从一句设想开始。CYF综合工作台会优先参照 RP-Hub 源码与工作区素材，生成可编辑、可体检、可直接导出的角色卡工程。</p><div class="hero-actions"><button class="primary" data-action="new">新建角色卡工程</button><button class="secondary" data-action="import">导入已有卡片</button><input id="file-input" type="file" accept=".json,.png,application/json,image/png" hidden></div></div><aside class="evidence-rail"><span>每次生成都有依据</span><ol><li><b>01</b>理解目标</li><li><b>02</b>检索成熟做法</li><li><b>03</b>生成可撤销补丁</li><li><b>04</b>运行三类审核</li></ol></aside></div><div class="prompt-panel"><label for="goal-input">描述你想进入的角色与世界</label><textarea id="goal-input" rows="4" placeholder="例如：做一张古风悬疑卡，开场要有强钩子；正文 UI 要稳定，不依赖脚本。"></textarea><div class="prompt-foot"><span id="goal-hint">不用先懂字段、正则或变量桥；先说清楚你想玩的体验。</span><button class="primary" data-action="plan">生成制作建议</button></div></div><div class="home-grid"><article><h2>源码优先</h2><p id="baseline-copy">字段、运行时、UI 和导出遇到疑问时，AI 先检索 RP-Hub 源码再回答。</p></article><article><h2>工程资源</h2><p>工作区中的参考卡、图片、代码与设定资料，都可以被读取、预览并用于当前工程。</p></article><article><h2>质量控制</h2><p>运行、体验与提交规则分层检查；问题可定位、可修复，也不会把本地检查冒充绝对过审。</p></article></div></section>
+<section class="view" data-view="generation"><div class="section-head"><div><h1>制卡进度</h1><p>当前阶段、实时返回和检查点操作都在这里。离开此页面也能从左侧回来继续。</p></div><button type="button" class="secondary" data-nav="home">返回创作首页</button></div><div data-generation-progress></div><div id="plan-output" class="plan-output" hidden></div><div class="empty" data-generation-empty>还没有制卡任务。返回创作首页，填写题材后点击生成即可开始。</div></section>
 <section class="view" data-view="workspace"><div class="section-head"><div><h1>卡片工作区</h1><p>结构化编辑，不用在整份 JSON 里找字段。</p></div><div><button class="secondary" data-action="undo">撤销上次修改</button><button class="primary" data-action="save">保存到浏览器</button></div></div><div class="editor-layout"><form id="card-form" class="editor"><label>角色名<input name="name" placeholder="角色名"></label><label>一句话定位<input name="description" placeholder="身份、核心矛盾与体验承诺"></label><label>人物设定<textarea name="personality" rows="7" placeholder="性格、动机、边界、说话方式"></textarea></label><label>场景设定<textarea name="scenario" rows="6" placeholder="当前世界、关系与冲突"></textarea></label><label>开场白<textarea name="first_mes" rows="12" placeholder="支持文本与宿主前端允许的 HTML/CSS"></textarea></label><label>示例对话<textarea name="mes_example" rows="7" placeholder="用几轮对话固定语气与行为边界"></textarea></label></form><aside class="inspector"><h2>工程清单</h2><div id="inventory"></div><h2>世界书</h2><div id="lore-summary"></div><button class="secondary wide" data-action="audit">按过审规则体检</button></aside></div></section>
 <section class="view" data-view="audit"><div class="section-head"><div><h1>质量控制台</h1><p>运行、体验与提交规则并行检查；每个问题都指向具体字段与修复动作。</p></div><button class="primary" data-action="audit">重新体检</button></div><div id="audit-summary" class="audit-summary" aria-live="polite"></div><div class="audit-tabs"><button class="is-active" data-audit-tab="runtime">运行审核</button><button data-audit-tab="quality">质量审核</button><button data-audit-tab="submission">提交审核（过审规则）</button></div><div id="audit-results"></div></section>
 <section class="view" data-view="publish"><div class="section-head"><div><h1>发布与保护</h1><p>导出标准 JSON/PNG；保护是可追溯的软锁，不承诺不可破解。</p></div></div><div class="publish-grid"><section><h2>导出卡片文件</h2><p>普通导出使用标准角色卡格式；加入防盗后，PNG 使用 1.6 的 RP-Hub 兼容软锁并写入封面水印。</p><div class="stack"><button class="primary" data-action="export-json">导出 JSON（草稿可用）</button><button class="secondary" data-action="export-png">导出 PNG</button></div></section><section><h2>署名与溯源</h2><label>作者署名<input id="author-input" placeholder="你的名字或工作室"></label><p class="fine">写入作者、时间和声明，用于辨识与溯源。技术上仍可被移除。</p><button class="secondary" data-action="sign">写入署名</button> <button class="primary" data-action="protect-card">加入防盗</button><label style="margin-top:16px">防盗码（留空自动生成）<input id="rp-protection-code" placeholder="自动生成，或填写 6–12 位字母数字"></label><p id="rp-protection-status" class="fine" role="status">尚未加入防盗</p><p class="fine">直接为当前卡加入 1.6 防盗，导出 PNG 时写入封面水印与 RP-Hub 兼容软锁。作者注释只保留 TAG。</p></section></div></section>
@@ -260,11 +261,11 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
      改版本时只改这一处，然后跑 tools/package.sh 重新打包。
      格式必须严格是 x.y.z——tools/asserts/version.js 用 /^\d+\.\d+\.\d+$/ 校验，
      所以构建戳不能拼在这里，只能放下面的 WORKBENCH_BUILD。 */
-  const WORKBENCH_VERSION='1.2.4';
+  const WORKBENCH_VERSION='1.2.5';
   /* 构建戳：由 tools/sync-site.sh 在同步时自动改写成「日期.sha」，手改这里没有意义。
      它存在的理由就是版本号看不出来的那件事——线上跑的到底是哪一次构建。 */
-  const WORKBENCH_BUILD='2026.10.14.05130f6';
-  const WORKBENCH_RELEASE={"title":"工程管理、试玩连接和更新提示已升级","notes":["顶部新增「删除工程」：确认后删除；删除当前工程会自动切换，最后一个删除后会补建空工程。","修复当前卡试玩时的模型配置和卡片导入连接；连接超时后可查看提示并重试。","生成时检查常驻预算、触发位置和关键词，违规内容会要求模型重写，避免把问题留到导出时。","今后发现新版会提示保存并刷新，刷新后显示本次更新公告。","新增访问密匙：进入工作台前需要输入密匙；验证成功后，本次标签页刷新无需重复输入。"]};
+  const WORKBENCH_BUILD='2026.10.14.85908ad';
+  const WORKBENCH_RELEASE={"title":"制卡进度独立呈现，失败后可以继续","notes":["新增独立「制卡进度」页面：点击生成后自动进入，侧栏可随时返回；实时返回与失败原因集中展示，不再放在首页底部。","生成失败或手动停止后，显示检查点所在工程，提供「继续补齐」「查看草稿」「导出工程备份」；刷新后仍能继续，保留已完成内容。","修复肉卡基础设计自动修复时，下限错显为 20,000 字的问题；肉卡生成标准仍为 80,000 字。","修复旧草稿未记录卡型或呈现模式时的回退：沿用当前选择，并保存到后续生成与进度统计中。"]};
   /* 注意：工厂函数里没有 root 这个变量（root 只是外层 IIFE 的参数），必须用 globalThis。 */
   try{globalThis.Zaojing=globalThis.Zaojing||{};globalThis.Zaojing.version=WORKBENCH_VERSION;globalThis.Zaojing.build=WORKBENCH_BUILD;globalThis.Zaojing.releaseNotes=WORKBENCH_RELEASE;}catch(_){ }
   try{
@@ -2172,19 +2173,28 @@ setTimeout(()=>Z.integratedProtection.refresh(),0);
   }
   async function generate({goal,ask,signal,checkpoint,onProgress,existing,uiMode='regex',cardKind='regular'}) {
     let card=existing?clone(existing):null;
-    uiMode=Z.uiModes.normalize(card?meta(card).uiMode||'regex':uiMode);
-    cardKind=(Z.cardKinds?Z.cardKinds.normalize(card?meta(card).cardKind||'regular':cardKind):'regular');
+    /* 卡上记着就听卡上的（继续补齐时不能把作者选过的卡型和呈现模式弄丢），
+       卡上没记就听传进来的。原来写成 `card ? meta(card).X || 默认 : X`：
+       只要 card 存在就无条件走卡上那一支，于是载入一张没有 rp_studio
+       扩展的旧卡时会静默降级成常规卡——最低字数 80000 掉回 20000。 */
+    uiMode=Z.uiModes.normalize((card&&meta(card).uiMode)||uiMode);
+    cardKind=Z.cardKinds?Z.cardKinds.normalize((card&&meta(card).cardKind)||cardKind):'regular';
+    /* 解析出卡型后写回续写副本，后续 measure(card) 才会使用同一口径。 */
+    if(card)Object.assign(meta(card),{cardKind,uiMode});
     const planSpec=cardPlan(cardKind);
     const aborted=()=>{if(signal.aborted)throw new DOMException('已停止','AbortError');};
     const emit=async(phase)=>{aborted();const m=meta(card);m.phase=phase;m.measured=measure(card).effective;m.updatedAt=new Date().toISOString();await checkpoint(clone(card));onProgress(phase,measure(card));};
     const context=skillContext('all',cardKind)+Z.uiModes.instruction(uiMode)+'\n作者注释 creator_notes 仅允许 2–8 个简短 TAG，每项以 # 开头，用一个空格分隔，例如 #历史 #朝堂 #悬疑。不得填写规则、剧情、说明、署名或长句；这些内容写入 description、scenario 或对应世界书。';
-    let requestCalls=0;
+    let requestCalls=0,resumeReason=card?String(meta(card).lastGenerationError||''):'';
     const request=async(phase,prompt,validate)=>{
-      let reason='';
+      let reason=resumeReason;resumeReason='';
       for(let retry=0;retry<3;retry++){
         aborted();if(++requestCalls>52)throw Error('达到自动请求上限，检查点已保留。');
-        try{const text=await ask(phase+(retry?' · 自动修复 '+retry:''),prompt+(reason?'\n上次结果未通过，请重做当前批次。具体问题：'+reason:''));aborted();const obj=Z.generation.jsonFrom(text);if(validate)await validate(obj);return text;}
-        catch(error){if(error.name==='AbortError')throw error;reason=error.message;if(retry===2)throw Error('当前阶段自动修复仍未通过：'+reason);onProgress(phase+'自动修复',measure(card||{data:{character_book:{entries:[]}}}));}
+        try{const text=await ask(phase+(retry?' · 自动修复 '+retry:''),prompt+(reason?'\n上次结果未通过，请重做当前批次。具体问题：'+reason:''));aborted();const obj=Z.generation.jsonFrom(text);if(validate)await validate(obj);if(card)delete meta(card).lastGenerationError;return text;}
+        /* 进度条上的「有效世界书 0 / 20,000 字」就是这里来的：基础设计还没
+           成功时 card 仍是 null，兜底对象又不带 rp_studio.cardKind，measure()
+           就把肉卡当成常规卡，分母从 80000 掉成 20000。把卡型带进去。 */
+        catch(error){if(error.name==='AbortError')throw error;reason=error.message;if(retry===2)throw Error('当前阶段自动修复仍未通过：'+reason);onProgress(phase+'自动修复',measure(card||{data:{character_book:{entries:[]},extensions:{rp_studio:{cardKind,uiMode}}}}));}
       }
     };
     if(!card){
@@ -2572,11 +2582,11 @@ for (const e of live.filter((x) => catOf(x) === 'play')) {
   Z.fullCard={bundle,measure,cardPlan,validateCraftModules,meatModulesFor,skillContext,generate,displayRules,installDisplay,issues,meta,esc,autoCover,imageSettings,digest,localCheck,keywordGates,playNoveltyGate,stamp,hasStamp,HUB_WATERMARK};
   document.addEventListener('DOMContentLoaded',()=>{
     const h=Z.integrationHost;if(!h)return;
-    const box=document.createElement('section');box.id='rp-full-controls';box.className='rp-full-controls';
+    const box=document.createElement('details');box.id='rp-full-controls';box.className='rp-full-controls';
     box.innerHTML='<h2>完整做卡</h2><p>分段生成有效世界书，目标至少 20000 字；每卡独立 CSS，选项点击换行追加到输入框，由玩家编辑发送。封面和平台验收单独完成。</p><div class="rp-control-row"><button type="button" id="rp-resume">继续补齐当前草稿</button><button type="button" id="rp-cover-prompt">复制封面提示词</button><label>选择插画封面 <input id="rp-cover-file" type="file" accept="image/png,image/jpeg,image/webp"></label><button type="button" id="rp-check">重新检查</button></div><label><input id="rp-cover-review" type="checkbox"> 我已检查封面题材匹配、不是纯文字占位图，且竖幅裁切可读</label><img id="rp-cover-preview" alt="当前选定封面" hidden><p id="rp-full-status" role="status"></p><details><summary>已接入的 SKILLS 与验收说明</summary><p id="rp-skill-list"></p><p>本地预览通过不等于目标平台通过。选项只追加到输入框，不自动发送；已有草稿保留，玩家可继续修改。签名只做署名和识别，不能保证防复制。JSON 始终可作为草稿保存。</p></details>';
-    document.querySelector('#goal-input')?.closest('.panel')?.append(box) || document.querySelector('#plan-output')?.before(box);
+    document.querySelector('#plan-output').after(box);
     document.querySelector('#rp-skill-list').textContent=Object.keys(bundle.skills).join(' · ');
-    box.querySelector('h2').textContent='一句话自动做卡 · SKILLS 0.3';
+    box.querySelector('h2').remove();const summary=document.createElement('summary');summary.textContent='草稿检查与可选封面';box.prepend(summary);
     box.querySelector('p').textContent='输入题材后自动补足有效世界书，按玩家选择生成正则 UI、变量 UI 或纯文本卡，检查后直接导出 JSON 卡片。封面是可选步骤：卡片生成后再生图或上传，不影响先出卡和继续细化。';
     box.querySelector('label:has(#rp-cover-review)').lastChild.textContent=' 封面已通过视觉检查（也可人工复核并确认题材、插画与竖幅裁切）';
     const coverButton=document.createElement('button');coverButton.id='rp-generate-cover';coverButton.type='button';coverButton.textContent='生成封面（出卡后可选）';box.querySelector('.rp-control-row').append(coverButton);coverButton.onclick=()=>h.generateCover();
@@ -3238,8 +3248,11 @@ keys 用玩家会自然说出的行为词，从该档自己的正文里长出来
   function remember(){try{sessionStorage.setItem('zaojingtai.progress',JSON.stringify(state));}catch(_){}render();}
   function render(){
     if(!panel)return;
-    const names={idle:'尚未开始',running:'正在生成，尚未完成',checking:'正在检查，尚未完成',complete:'卡片已生成',failed:'生成失败，草稿已保留',stopped:'已停止，草稿已保留',interrupted:'页面已重新载入，检查点可继续补齐'};
+    const names={idle:'尚未开始',running:'正在生成，尚未完成',checking:'正在检查，尚未完成',complete:'卡片已生成',failed:'生成失败',stopped:'已停止',interrupted:'页面已重新载入，检查点可继续补齐'};
     panel.dataset.status=state.status;
+    const nav=document.querySelector('.nav-list [data-nav="generation"]'),tag={running:'生成中',checking:'检查中',failed:'需要处理',stopped:'已停止',interrupted:'可继续',complete:'已完成'}[state.status];if(nav)nav.textContent='制卡进度'+(tag?' · '+tag:'');
+    const empty=document.querySelector('[data-generation-empty]');if(empty)empty.hidden=state.status!=='idle'||!!lastCard?.data?.extensions?.rp_studio?.goal;
+
     panel.querySelector('[data-progress-title]').textContent=names[state.status]||state.status;
     panel.querySelector('[data-progress-phase]').textContent=label(state.stage);panel.querySelector('.rp-progress-details').open=['running','checking','failed','stopped','interrupted'].includes(state.status);
     panel.querySelector('[data-progress-count]').textContent='有效世界书 '+state.effective.toLocaleString()+' / '+state.minimum.toLocaleString()+' 字';
@@ -3249,13 +3262,16 @@ keys 用玩家会自然说出的行为词，从该档自己的正文里长出来
     panel.querySelector('[data-progress-request]').textContent=state.requestStarted?'本次请求 '+sec+' 秒 · 已收到 '+state.received.toLocaleString()+' 字符'+(state.http?' · HTTP '+state.http:'')+(sec>=60&&!state.received&&state.status==='running'?' · 尚无正文，接口可能仍在处理':''):'';
     panel.querySelector('[data-progress-error]').textContent=state.error;
     const button=panel.querySelector('[data-progress-preview]');if(button)button.disabled=!Z.integrationHost?.getCard()?.data?.first_mes;
+    const m=lastCard?F.meta(lastCard):{},recoverable=!!(lastCard&&m.goal&&Array.isArray(m.blueprint?.worldbookPlan)&&(!state.goal||m.goal===state.goal)&&!['running','checking','complete'].includes(state.status));
+    const actions=panel.querySelector('[data-progress-recovery]');if(actions){actions.hidden=!recoverable;if(recoverable){actions.querySelector('[data-progress-checkpoint]').textContent='当前工程「'+(lastCard.data?.name||'未命名')+'」 · 已保留 '+(lastCard.data?.character_book?.entries||[]).length+' 条世界书 · 顶部工程下拉框可切换';actions.querySelector('[data-progress-resume]').disabled=!!Z.integrationHost.isTaskRunning();}}
+
   }
-  function checkpoint(card){lastCard=card;const m=F.measure(card),meta=F.meta(card);state.effective=m.effective;state.minimum=m.minimum;
+  function checkpoint(card){lastCard=card;const m=F.measure(card),meta=F.meta(card);if(!state.goal&&meta.goal)state.goal=meta.goal;if(state.status==='idle'&&meta.lastGenerationError){state.status='failed';state.error=meta.lastGenerationError;}state.effective=m.effective;state.minimum=m.minimum;
     if(card.data?.first_mes&&!state.completed.includes('基础设计'))state.completed.push('基础设计');
     for(const p of meta.blueprint?.worldbookPlan||[]){const n=m.rows.filter(r=>r.category===p.category).reduce((sum,r)=>sum+r.effective,0);const name=categoryNames[p.category];/* 可选类目没被启用时 targetChars 是 0，n>=0 恒真，会 0 字就显示「已完成」。所以必须先判 targetChars>0，未启用的单独标注。 */if(p.targetChars>0){if(n>=p.targetChars&&!state.completed.includes(name))state.completed.push(name);}else{const off=name+'（未启用）';if(!state.completed.includes(off))state.completed.push(off);}}
     if(meta.presentation&&!state.completed.includes('UI 与正则'))state.completed.push('UI 与正则');remember();
   }
-  function start(card){state={status:'running',stage:'基础设计',effective:0,minimum:F.cardPlan(card?F.meta(card).cardKind||'regular':(Z.cardKinds?Z.cardKinds.selected():'regular')).minimum,completed:[],started:Date.now(),requestStarted:0,received:0,http:null,error:''};if(card)checkpoint(card);remember();}
+  function start(card){lastCard=card||null;state={goal:card?F.meta(card).goal:document.querySelector('#goal-input')?.value.trim(),status:'running',stage:'基础设计',effective:0,minimum:F.cardPlan(card?F.meta(card).cardKind||'regular':(Z.cardKinds?Z.cardKinds.selected():'regular')).minimum,completed:[],started:Date.now(),requestStarted:0,received:0,http:null,error:''};if(card)checkpoint(card);remember();}
   function stage(phase,m){state.stage=label(phase);state.status=String(phase).includes('检查')?'checking':'running';if(m){state.effective=m.effective;state.minimum=m.minimum;}remember();}
   function finish(status,error=''){state.status=status;state.error=error;state.requestStarted=0;if(status==='complete'){state.stage='最低标准与本地 UI 检查完成；等待目标平台实际审核';if(!state.completed.includes('本地检查'))state.completed.push('本地检查');}remember();}
   function restoreProject(saved){try{state=saved?JSON.parse(saved):{status:'idle',stage:'等待生成',effective:0,minimum:20000,completed:[],started:0,requestStarted:0,received:0,http:null,error:''};}catch(_){state={status:'idle',stage:'等待生成',effective:0,minimum:20000,completed:[],started:0,requestStarted:0,received:0,http:null,error:''};}if(['running','checking'].includes(state.status)){state.status='interrupted';state.requestStarted=0;}remember();}
@@ -3285,8 +3301,12 @@ keys 用玩家会自然说出的行为词，从该档自己的正文里长出来
     const style=document.createElement('style');style.textContent=`#rp-generation-progress{position:sticky;top:0;z-index:30;margin:0 0 20px;padding:14px 20px;background:#f8f6f0;border:1px solid #98836a;border-radius:12px;color:#242720;box-shadow:0 4px 15px #0001}#rp-generation-progress[data-status=running],#rp-generation-progress[data-status=checking]{border-color:#447651}#rp-generation-progress [data-progress-title]{font-weight:700}#rp-generation-progress p{margin:5px 0;font-size:13px}#rp-generation-progress progress{width:100%;height:8px}#rp-generation-progress [data-progress-error]{color:#9e3434}#rp-generation-progress .rp-progress-row{display:flex;justify-content:space-between;gap:10px;align-items:center}#rp-preview-dialog{width:min(1120px,94vw);max-height:94vh;padding:22px;background:#f8f6f0;border:1px solid #98836a;border-radius:14px;color:#242720;overflow:auto}#rp-preview-dialog::backdrop{background:#0008}#rp-preview-dialog header,#rp-preview-dialog .rp-preview-buttons{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}#rp-preview-dialog textarea{display:block;width:100%;height:160px;margin:10px 0}#rp-preview-dialog iframe{display:block;width:100%;height:650px;margin:12px auto;border:1px solid #ddd;background:white}#rp-preview-dialog[data-size=mobile] iframe{width:min(360px,100%)}#rp-preview-dialog pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto;font-size:12px}#rp-preview-dialog button{white-space:normal}#rp-preview-dialog [data-preview-note]{padding:10px;background:#e9efe9} @media(max-width:600px){#rp-generation-progress{padding:10px;top:0}#rp-preview-dialog{padding:12px}#rp-preview-dialog iframe{height:560px}}`;
     document.head.append(style);
     panel=document.createElement('section');panel.id='rp-generation-progress';panel.setAttribute('aria-label','生成进度');panel.setAttribute('aria-live','polite');
-    panel.innerHTML='<div class="rp-progress-row"><span data-progress-title></span></div><p data-progress-phase></p><p data-progress-count></p><progress aria-label="有效世界书字数"></progress><details class="rp-progress-details"><summary>阶段与检查详情</summary><p data-progress-done></p></details><p data-progress-request></p><p data-progress-error></p>';
-    document.querySelector('#main-content').prepend(panel);
+    panel.innerHTML='<div class="rp-progress-row"><span data-progress-title></span></div><p data-progress-phase></p><p data-progress-count></p><progress aria-label="有效世界书字数"></progress><details class="rp-progress-details"><summary>阶段与检查详情</summary><p data-progress-done></p></details><p data-progress-request></p><p data-progress-error></p><div data-progress-recovery hidden><p data-progress-checkpoint></p><div class="rp-control-row"><button type="button" class="primary" data-progress-resume>从检查点继续补齐</button><button type="button" class="secondary" data-progress-open>查看已保存草稿</button><button type="button" class="secondary" data-progress-backup>导出工程备份</button></div></div>';
+    document.querySelector('[data-generation-progress]').append(panel);
+    panel.querySelector('[data-progress-resume]').onclick=()=>Z.integrationHost.generate(true);
+    panel.querySelector('[data-progress-open]').onclick=()=>{Z.integrationHost.setCreatorTab('overview');Z.integrationHost.navigate('workspace');};
+    panel.querySelector('[data-progress-backup]').onclick=()=>Z.projects.exportBackup();
+
     dialog=document.createElement('dialog');dialog.id='rp-preview-dialog';dialog.dataset.size='desktop';
     dialog.innerHTML='<header><h2>开场、正则与 UI 预览</h2><button type="button" data-preview-close>关闭预览</button></header><p data-preview-rules></p><div class="rp-preview-buttons"><button type="button" data-preview-opening>开场白</button><button type="button" data-preview-following>示例后续回复</button><button type="button" data-preview-mobile>手机 360px</button><button type="button" data-preview-desktop>桌面</button></div><label>消息原文（可改来测试）<textarea data-preview-source></textarea></label><button type="button" data-preview-render>更新预览</button><p data-preview-note role="status"></p><iframe title="角色卡本地预览" sandbox="allow-scripts allow-same-origin"></iframe><details><summary>查看正则处理后的内容</summary><pre data-preview-processed></pre></details>';
     document.body.append(dialog);
@@ -3751,13 +3771,16 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
     const existing=resume?collectForm():null;
     const goal=resume?Z.fullCard.meta(existing).goal:$('#goal-input').value.trim();
     if(!goal)return toast('先描述你想做的卡片，或载入可续写草稿');
-    const uiMode=resume?Z.fullCard.meta(existing).uiMode||'regex':Z.uiModes.selected();
-    const cardKind=resume?Z.fullCard.meta(existing).cardKind||'regular':Z.cardKinds.selected();
+    const uiMode=resume?Z.fullCard.meta(existing).uiMode||Z.uiModes.selected():Z.uiModes.selected();
+    const cardKind=resume?Z.fullCard.meta(existing).cardKind||Z.cardKinds.selected():Z.cardKinds.selected();
     const cfg=requireApi();if(!cfg)return;
     if(streamController)return toast('请先停止当前 AI 任务');
-    try{await Z.sourceEngine?.prepareGeneration();}catch(e){return toast('源码准备失败：'+e.message)}
-    const out=$('#plan-output');out.hidden=false;out.innerHTML='<div class="stream-head"><div><h2>分阶段自动做卡</h2><p id="draft-stream-status">正在规划角色与世界…</p></div><button class="secondary" data-action="stop-stream">停止</button></div><pre class="ai-stream" id="draft-stream"></pre>';
+    navigate('generation');const out=$('#plan-output');out.hidden=false;$('[data-generation-empty]').hidden=true;
+    out.innerHTML='<div class="stream-head"><div><h2>正在准备制卡</h2><p>正在载入本轮制作依据…</p></div></div>';
+    try{await Z.sourceEngine?.prepareGeneration();}catch(e){out.innerHTML='<div class="error-box"><b>制作准备失败</b><p>'+esc(e.message)+'</p><button type="button" class="primary" data-generation-prepare-retry>重试准备</button></div>';out.querySelector('[data-generation-prepare-retry]').onclick=()=>generateInitial(resume);return toast('源码准备失败：'+e.message)}
+    out.innerHTML='<div class="stream-head"><div><h2>正在制作角色卡</h2><p id="draft-stream-status">正在规划角色与世界…</p></div><button class="secondary" data-action="stop-stream">停止</button></div><pre class="ai-stream" id="draft-stream"></pre>';
     const pre=$('#draft-stream'),controller=beginStream(),origin=ws;
+    if(existing)Object.assign(Z.fullCard.meta(existing),{cardKind,uiMode});
     Z.fullCard.feedback.start(existing);
     const settle=(title,message)=>{
       out.querySelector('.stream-head h2').textContent=title;
@@ -3775,7 +3798,7 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
     };
     try{
       const draft=await Z.fullCard.generate({goal,existing,uiMode,cardKind,ask,signal:controller.signal,
-        checkpoint:async card=>{if(ws!==origin||streamController!==controller)throw new DOMException('工作区已切换','AbortError');Z.workspace.saveCard(ws,card,'分阶段做卡检查点');ws.name=card.data.name+' 工作区';ws.creation={goal,at:new Date().toISOString(),mode:'full-card'};Z.workspace.persist(ws);Z.fullCard.feedback.checkpoint(card);renderWorkspace();document.dispatchEvent(new Event('rp-card-changed'));},
+        checkpoint:async card=>{if(ws!==origin||streamController!==controller)throw new DOMException('工作区已切换','AbortError');Z.fullCard.meta(card).checkpointAt=new Date().toISOString();Z.workspace.saveCard(ws,card,'分阶段做卡检查点');ws.name=card.data.name+' 工作区';ws.creation={goal,at:new Date().toISOString(),mode:'full-card'};await Z.workspace.persist(ws);Z.fullCard.feedback.checkpoint(card);renderWorkspace();document.dispatchEvent(new Event('rp-card-changed'));},
         onProgress:(phase,m)=>{Z.fullCard.feedback.stage(phase,m);$('#draft-stream-status').textContent=phase+' · 有效正文 '+m.effective+' / '+m.minimum+' 字';}
       });
       if(streamController!==controller||ws!==origin)return;
@@ -3819,7 +3842,26 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
       settle('本轮生成已完成','本地检查已通过 · 有效世界书 '+m.effective+' / '+m.minimum+' 字 · 本轮没有进行中的请求');
       out.insertAdjacentHTML('beforeend','<div class="draft-ready"><h2>卡片已生成，封面可后加</h2><p>世界书与所选呈现模式已检查，JSON 已导出。可以直接试用或继续细化；需要封面时再点击“生成封面”或上传图片。</p><button class="primary" data-start-workspace>继续细化这张卡</button></div>');
       $('[data-start-workspace]').onclick=()=>{setCreatorTab('overview');navigate('workspace')};
-    }catch(e){Z.fullCard.feedback.finish(e.name==='AbortError'?'stopped':'failed',e.message);settle(e.name==='AbortError'?'本轮生成已停止':'本轮生成失败','已有检查点保留，可继续补齐；'+e.message);toast(e.name==='AbortError'?'已停止，已完成的阶段保留为草稿':e.message);out.insertAdjacentHTML('beforeend','<div class="error-box"><b>当前任务已停止，已有检查点保留</b><p>'+esc(e.message)+'</p></div>');}
+    }catch(e){
+      if(ws!==origin)return;
+      const current=collectForm(),m=Z.fullCard.meta(current),hasCheckpoint=m.goal===goal&&Array.isArray(m.blueprint?.worldbookPlan),count=(current.data.character_book?.entries||[]).length;
+      let saved=false,saveError='';
+      if(hasCheckpoint){
+        if(e.name!=='AbortError')m.lastGenerationError=e.message;
+        Z.workspace.saveCard(ws,current,'生成中断，保留检查点');
+        try{await Z.workspace.persist(ws);saved=true;}catch(error){saveError=error.message;}
+        renderWorkspace();Z.fullCard.feedback.checkpoint(current);
+      }
+      Z.fullCard.feedback.finish(e.name==='AbortError'?'stopped':'failed',e.message);
+      const location=hasCheckpoint?(saved?'检查点已保存在本机浏览器的当前工程「':'草稿保留在当前页面的工程「')+(current.data.name||ws.name)+'」，已保留 '+count+' 条世界书。':'基础设计尚未成功，本轮暂未创建检查点。';
+      settle(e.name==='AbortError'?'本轮生成已停止':'本轮生成失败',location);
+      toast(e.name==='AbortError'?'已停止，已完成的阶段保留为草稿':e.message);
+      out.insertAdjacentHTML('beforeend','<div class="error-box"><b>'+esc(hasCheckpoint?'当前任务已停止，草稿已保留':'当前任务已停止，基础设计尚未完成')+'</b><p>'+esc(e.message)+'</p></div><section data-generation-recovery><p data-checkpoint-location>'+esc(location)+'</p>'+(hasCheckpoint?'<p>在顶部工程下拉框中可找到此工程，也可点击下方按钮查看。继续补齐会保留已完成内容，并从尚未达标的部分继续。</p>'+(m.checkpointAt?'<p>最近检查点：'+esc(new Date(m.checkpointAt).toLocaleString())+'</p>':'')+(saveError?'<p role="alert">本机保存失败：'+esc(saveError)+'。请先导出工程备份，再关闭或刷新页面。</p>':'')+'<div class="rp-control-row"><button type="button" class="primary" data-checkpoint-resume>从检查点继续补齐</button><button type="button" class="secondary" data-checkpoint-open>查看已保存草稿</button><button type="button" class="secondary" data-checkpoint-backup>导出工程备份</button></div>':'<button type="button" class="primary" data-generation-retry>重试基础设计</button>')+'</section>');
+      const resumeButton=out.querySelector('[data-checkpoint-resume]');if(resumeButton)resumeButton.onclick=()=>generateInitial(true);
+      const openButton=out.querySelector('[data-checkpoint-open]');if(openButton)openButton.onclick=()=>{setCreatorTab('overview');navigate('workspace');};
+      const backupButton=out.querySelector('[data-checkpoint-backup]');if(backupButton)backupButton.onclick=()=>Z.projects.exportBackup();
+      const retryButton=out.querySelector('[data-generation-retry]');if(retryButton)retryButton.onclick=()=>generateInitial(false);
+    }
     finally{Z.sourceEngine?.release();endStream(controller);document.dispatchEvent(new Event('rp-card-changed'));}
   }
 
