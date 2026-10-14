@@ -11,6 +11,7 @@
 #     NO_PUSH=1   只提交不推送
 #     NO_VERIFY=1 跳过发布前检查
 #     MSG         自定义提交信息
+#     PROBE_PASSWORD_FILE  本机口令文件，供发布前浏览器验证使用（不写入站点）
 #
 # 它做的事：
 #   1. 从源码里读出 WORKBENCH_VERSION，和当前 index.html 的版本比对
@@ -26,6 +27,10 @@ cd "$REPO_ROOT"
 
 SOURCE="${1:-${SOURCE:-/home/ubuntu/RP-Hub/CYF综合工作台/CYF综合工作台.html}}"
 [ -f "$SOURCE" ] || { echo "✗ 找不到工作台源码: $SOURCE" >&2; echo "  用法: tools/sync-site.sh <路径>" >&2; exit 2; }
+if grep -q 'const WORKBENCH_ACCESS=' "$SOURCE" && [ "${NO_VERIFY:-0}" != "1" ] && [ -z "${PROBE_PASSWORD_FILE:-}" ]; then
+  echo "✗ 站点已启用访问口令。请设置 PROBE_PASSWORD_FILE 指向本机口令文件，再进行发布前浏览器验证。" >&2
+  exit 2
+fi
 WB_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
 RUNTIME_SRC="$WB_DIR/RP-Hub-main"
 RUNTIME_DST="$REPO_ROOT/RP-Hub-main"
