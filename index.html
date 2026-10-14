@@ -187,7 +187,53 @@ body.module-import-open{overflow:hidden}.module-import-dialog{position:fixed;z-i
 @media(max-width:720px){.diff-dock .diff-compose{grid-template-columns:minmax(0,1fr)!important}.diff-dock .ai-runtime-controls,.diff-dock .diff-compose>.primary{grid-column:1}.diff-dock .diff-compose>.primary{width:100%}.diff-dock .diff-columns{grid-template-columns:minmax(0,1fr)}.diff-dock #diff-prompt{min-height:132px}.diff-dock .diff-apply-bar .primary{width:100%}.diff-dock .model-control{min-width:0;width:100%;flex-basis:100%}}
 .diff-dock .diff-compose>.stream-actions{grid-column:1/-1;display:flex;align-items:center;flex-wrap:wrap;gap:12px}.diff-dock .stream-actions>.ai-runtime-controls{flex:1;order:0}.diff-dock .stream-actions>.primary{flex-shrink:0}@media(max-width:720px){.diff-dock .stream-actions>.ai-runtime-controls{flex-basis:100%}.diff-dock .stream-actions>.primary{width:100%}}
 </style><style id="rp-audit-style">.audit-group-overview{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:20px 0 14px;font-size:13px;color:#535f55}.audit-group-overview span{color:#77796e;font-size:12px}.audit-issue-group{margin:0 0 12px;border:1px solid #d7d9cf;border-left:4px solid #b8873b;border-radius:12px;background:#fffdf8;overflow:hidden}.audit-issue-group.error{border-left-color:#bf5149}.audit-issue-group.info{border-left-color:#648378}.audit-issue-group>summary{display:block;cursor:pointer;padding:18px 20px;list-style:none}.audit-issue-group>summary::-webkit-details-marker{display:none}.audit-group-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.audit-group-title h2{flex:1;min-width:180px;font-size:16px;line-height:1.5;margin:0;color:#282d26}.audit-group-title .severity{font-size:11px;white-space:nowrap;color:#987037}.audit-issue-group.error .severity{color:#ad443c}.audit-group-count{font:12px/1.5 system-ui;padding:4px 9px;border-radius:99px;background:#f0ede4;color:#666657}.audit-group-preview{margin:12px 0 8px;padding-left:18px;color:#75796b;font:12px/1.65 system-ui}.audit-group-preview li{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}.audit-fold-label{font-size:12px;color:#486959}.when-open,.audit-issue-group[open] .when-closed{display:none}.audit-issue-group[open] .when-open{display:inline}.audit-issue-group[open]>summary{border-bottom:1px solid #e1e2d8}.audit-issue-group[open] .audit-group-preview{display:none}.audit-group-body{padding:16px 20px 20px}.audit-group-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px;font-size:12px;color:#76786c}.audit-group-toolbar button,.audit-group-items button{font-size:12px;padding:9px 12px;flex:none}.audit-group-items{max-height:420px;overflow:auto;margin:0;padding:0 6px 0 24px;scrollbar-gutter:stable}.audit-group-items li{padding:14px 0;border-top:1px solid #ecece3}.audit-group-items li:first-child{border-top:0}.audit-group-items h3{font-size:13px;line-height:1.6;margin:0}.audit-group-items p{font-size:12px;line-height:1.8;margin:6px 0 10px;color:#76796c;overflow-wrap:anywhere}@media(max-width:600px){.audit-issue-group>summary,.audit-group-body{padding:14px}.audit-group-title{gap:7px}.audit-group-title h2{min-width:120px;font-size:14px}.audit-group-toolbar{flex-wrap:wrap}.audit-group-preview li{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.audit-group-items{max-height:360px}.audit-count{white-space:nowrap}}
-</style></head>
+</style><script>
+/* Lightweight front-end access gate. This verifies a salted key, not server authorization. */
+(function(){
+ 'use strict';const Z=globalThis.Zaojing=globalThis.Zaojing||{};
+ const WORKBENCH_ACCESS={"salt":"a47c3357d01e009ac2d9cbc137262c81","iterations":180000,"digest":"b1893b042e46cb933b8ccbca38d3741666f30d09dbf20d3f484ccfb27a8f1b7c"};
+ const sessionKey='cyf.access.session';let dialog,resolveReady,unlocked=false;
+ const ready=new Promise(resolve=>resolveReady=resolve);
+ const sessionRead=()=>{try{return sessionStorage.getItem(sessionKey);}catch(_){return null;}};
+ const hex=bytes=>Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');
+ async function verify(password){
+  if(!crypto.subtle)throw Error('当前浏览器不支持口令校验，请通过 HTTPS 或本地服务打开。');
+  const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveBits']);
+  const salt=Uint8Array.from(WORKBENCH_ACCESS.salt.match(/../g),x=>parseInt(x,16));
+  const bits=await crypto.subtle.deriveBits({name:'PBKDF2',salt,iterations:WORKBENCH_ACCESS.iterations,hash:'SHA-256'},key,256);
+  const digest=hex(new Uint8Array(bits));let difference=digest.length^WORKBENCH_ACCESS.digest.length;
+  for(let i=0;i<digest.length;i++)difference|=digest.charCodeAt(i)^WORKBENCH_ACCESS.digest.charCodeAt(i);
+  return difference===0;
+ }
+ function unlock(){
+  unlocked=true;try{sessionStorage.setItem(sessionKey,WORKBENCH_ACCESS.digest);}catch(_){}
+  document.documentElement.classList.remove('cyf-access-locked');document.querySelector('.app-shell')?.removeAttribute('inert');
+  if(dialog){dialog.querySelector('input').value='';dialog.close();}
+  resolveReady();dispatchEvent(new Event('cyf-access-granted'));
+ }
+ function mount(){
+  if(unlocked)return;document.querySelector('.app-shell')?.setAttribute('inert','');
+  dialog=document.createElement('dialog');dialog.id='cyf-access-dialog';dialog.setAttribute('aria-labelledby','cyf-access-title');
+  dialog.innerHTML='<form><p class="cyf-access-eyebrow">CYF · WORKBENCH</p><h1 id="cyf-access-title">请输入访问口令</h1><p>验证通过后即可进入工作台。</p><label>访问口令<input id="cyf-access-password" name="access-password" type="password" autocomplete="current-password" required autofocus></label><p data-access-error role="alert" hidden></p><button type="submit" class="primary">进入工作台</button><p class="cyf-access-note">本次标签页刷新无需重复输入口令。</p></form>';
+  document.body.append(dialog);dialog.addEventListener('cancel',event=>event.preventDefault());
+  dialog.querySelector('form').onsubmit=async event=>{
+   event.preventDefault();const input=dialog.querySelector('input'),button=dialog.querySelector('button'),error=dialog.querySelector('[data-access-error]');
+   if(button.disabled)return;button.disabled=true;button.textContent='正在验证…';error.hidden=true;
+   try{if(await verify(input.value)){unlock();}else{error.textContent='口令不正确，请重新输入。';error.hidden=false;input.value='';input.focus();}}
+   catch(e){error.textContent=e.message;error.hidden=false;}finally{button.disabled=false;button.textContent='进入工作台';}
+  };
+  dialog.showModal();
+ }
+ Z.access={ready,get unlocked(){return unlocked;}};
+ if(sessionRead()===WORKBENCH_ACCESS.digest){unlocked=true;resolveReady();}
+ else{document.documentElement.classList.add('cyf-access-locked');document.readyState==='loading'?document.addEventListener('DOMContentLoaded',mount):mount();}
+})();
+
+</script>
+<style>
+.cyf-access-locked .app-shell{visibility:hidden;pointer-events:none}#cyf-access-dialog{width:min(440px,calc(100vw - 32px));border:1px solid #d4d2c9;border-radius:18px;padding:30px;background:#fffdf8;color:#24231f;box-shadow:0 24px 80px #0004}#cyf-access-dialog::backdrop{background:#ecebe5}#cyf-access-dialog h1{font-size:27px;margin:8px 0 12px}#cyf-access-dialog form{display:grid;gap:15px}#cyf-access-dialog label{display:grid;gap:8px;font-weight:700}#cyf-access-dialog input{min-height:48px;width:100%;box-sizing:border-box;border:1px solid #cbc5b8;border-radius:9px;padding:10px;font:inherit}#cyf-access-dialog button{min-height:46px}#cyf-access-dialog p{margin:0;line-height:1.7;color:#676b63}.cyf-access-eyebrow{font-size:11px;letter-spacing:.18em}.cyf-access-note{font-size:12px}#cyf-access-dialog [data-access-error]{color:#a83d3d}
+</style>
+</head>
 <body><!--
 THESIS: 造境台是一座可验证的 AI 角色卡工程台，拒绝普通表单后台的平均排布。
 OWN-WORLD: 深石墨导航、暖灰工作面、电紫行动色、紧凑证据状态与编辑型排版。
@@ -197,7 +243,7 @@ FORM: 高级创作指挥台；已通过交互预览确认。
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
 --><a class="skip-link" href="#main-content">跳到主要内容</a><div id="app" class="app-shell">
 <aside class="sidebar" aria-label="主导航"><a class="brand" href="#home" data-nav="home"><span class="brand-mark">境</span><span><strong>CYF综合工作台</strong><small>AI 角色卡工程台</small></span></a><nav class="nav-list"><button class="nav-item is-active" data-nav="home">创作首页</button><button class="nav-item" data-nav="workspace">角色卡工程</button><button class="nav-item" data-nav="audit">体检与修复</button><button class="nav-item" data-nav="publish">发布与保护</button><button class="nav-item" data-nav="settings">源码与工作区</button></nav><div class="sidebar-note"><strong>本地工程模式</strong><span>卡片、密钥与工作区索引保存在本机；AI 只接收当前任务需要的内容。</span></div></aside>
-<div class="app-main"><header class="topbar"><button class="mobile-menu" type="button">菜单</button><div class="status-strip"><span class="status-chip" id="api-status">API 未连接</span><span class="status-chip" id="baseline-status">RP-Hub 内置基线</span><span class="status-chip" id="workspace-status">未建工作区</span><span class="status-chip" id="version-status" title="工作台版本">v1.2.3</span><span class="status-chip" id="version-build" title="构建戳：日期.sha，用来判断线上是不是最新版">dev</span></div></header><main id="main-content" tabindex="-1">
+<div class="app-main"><header class="topbar"><button class="mobile-menu" type="button">菜单</button><div class="status-strip"><span class="status-chip" id="api-status">API 未连接</span><span class="status-chip" id="baseline-status">RP-Hub 内置基线</span><span class="status-chip" id="workspace-status">未建工作区</span><span class="status-chip" id="version-status" title="工作台版本">v1.2.4</span><span class="status-chip" id="version-build" title="构建戳：日期.sha，用来判断线上是不是最新版">dev</span></div></header><main id="main-content" tabindex="-1">
 <section class="view is-active" data-view="home"><div class="hero"><div><h1>把一张设想，<br>铸成可运行的世界。</h1><p>从一句设想开始。CYF综合工作台会优先参照 RP-Hub 源码与工作区素材，生成可编辑、可体检、可直接导出的角色卡工程。</p><div class="hero-actions"><button class="primary" data-action="new">新建角色卡工程</button><button class="secondary" data-action="import">导入已有卡片</button><input id="file-input" type="file" accept=".json,.png,application/json,image/png" hidden></div></div><aside class="evidence-rail"><span>每次生成都有依据</span><ol><li><b>01</b>理解目标</li><li><b>02</b>检索成熟做法</li><li><b>03</b>生成可撤销补丁</li><li><b>04</b>运行三类审核</li></ol></aside></div><div class="prompt-panel"><label for="goal-input">描述你想进入的角色与世界</label><textarea id="goal-input" rows="4" placeholder="例如：做一张古风悬疑卡，开场要有强钩子；正文 UI 要稳定，不依赖脚本。"></textarea><div class="prompt-foot"><span id="goal-hint">不用先懂字段、正则或变量桥；先说清楚你想玩的体验。</span><button class="primary" data-action="plan">生成制作建议</button></div></div><div class="home-grid"><article><h2>源码优先</h2><p id="baseline-copy">字段、运行时、UI 和导出遇到疑问时，AI 先检索 RP-Hub 源码再回答。</p></article><article><h2>工程资源</h2><p>工作区中的参考卡、图片、代码与设定资料，都可以被读取、预览并用于当前工程。</p></article><article><h2>质量控制</h2><p>运行、体验与提交规则分层检查；问题可定位、可修复，也不会把本地检查冒充绝对过审。</p></article></div><div id="plan-output" class="plan-output" hidden></div></section>
 <section class="view" data-view="workspace"><div class="section-head"><div><h1>卡片工作区</h1><p>结构化编辑，不用在整份 JSON 里找字段。</p></div><div><button class="secondary" data-action="undo">撤销上次修改</button><button class="primary" data-action="save">保存到浏览器</button></div></div><div class="editor-layout"><form id="card-form" class="editor"><label>角色名<input name="name" placeholder="角色名"></label><label>一句话定位<input name="description" placeholder="身份、核心矛盾与体验承诺"></label><label>人物设定<textarea name="personality" rows="7" placeholder="性格、动机、边界、说话方式"></textarea></label><label>场景设定<textarea name="scenario" rows="6" placeholder="当前世界、关系与冲突"></textarea></label><label>开场白<textarea name="first_mes" rows="12" placeholder="支持文本与宿主前端允许的 HTML/CSS"></textarea></label><label>示例对话<textarea name="mes_example" rows="7" placeholder="用几轮对话固定语气与行为边界"></textarea></label></form><aside class="inspector"><h2>工程清单</h2><div id="inventory"></div><h2>世界书</h2><div id="lore-summary"></div><button class="secondary wide" data-action="audit">按过审规则体检</button></aside></div></section>
 <section class="view" data-view="audit"><div class="section-head"><div><h1>质量控制台</h1><p>运行、体验与提交规则并行检查；每个问题都指向具体字段与修复动作。</p></div><button class="primary" data-action="audit">重新体检</button></div><div id="audit-summary" class="audit-summary" aria-live="polite"></div><div class="audit-tabs"><button class="is-active" data-audit-tab="runtime">运行审核</button><button data-audit-tab="quality">质量审核</button><button data-audit-tab="submission">提交审核（过审规则）</button></div><div id="audit-results"></div></section>
@@ -214,11 +260,11 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
      改版本时只改这一处，然后跑 tools/package.sh 重新打包。
      格式必须严格是 x.y.z——tools/asserts/version.js 用 /^\d+\.\d+\.\d+$/ 校验，
      所以构建戳不能拼在这里，只能放下面的 WORKBENCH_BUILD。 */
-  const WORKBENCH_VERSION='1.2.3';
+  const WORKBENCH_VERSION='1.2.4';
   /* 构建戳：由 tools/sync-site.sh 在同步时自动改写成「日期.sha」，手改这里没有意义。
      它存在的理由就是版本号看不出来的那件事——线上跑的到底是哪一次构建。 */
-  const WORKBENCH_BUILD='2026.10.14.47fb3a3';
-  const WORKBENCH_RELEASE={"title":"工程管理、试玩连接和更新提示已升级","notes":["顶部新增「删除工程」：确认后删除；删除当前工程会自动切换，最后一个删除后会补建空工程。","修复当前卡试玩时的模型配置和卡片导入连接；连接超时后可查看提示并重试。","生成时检查常驻预算、触发位置和关键词，违规内容会要求模型重写，避免把问题留到导出时。","今后发现新版会提示保存并刷新，刷新后显示本次更新公告。"]};
+  const WORKBENCH_BUILD='2026.10.14.05130f6';
+  const WORKBENCH_RELEASE={"title":"工程管理、试玩连接和更新提示已升级","notes":["顶部新增「删除工程」：确认后删除；删除当前工程会自动切换，最后一个删除后会补建空工程。","修复当前卡试玩时的模型配置和卡片导入连接；连接超时后可查看提示并重试。","生成时检查常驻预算、触发位置和关键词，违规内容会要求模型重写，避免把问题留到导出时。","今后发现新版会提示保存并刷新，刷新后显示本次更新公告。","新增访问密匙：进入工作台前需要输入密匙；验证成功后，本次标签页刷新无需重复输入。"]};
   /* 注意：工厂函数里没有 root 这个变量（root 只是外层 IIFE 的参数），必须用 globalThis。 */
   try{globalThis.Zaojing=globalThis.Zaojing||{};globalThis.Zaojing.version=WORKBENCH_VERSION;globalThis.Zaojing.build=WORKBENCH_BUILD;globalThis.Zaojing.releaseNotes=WORKBENCH_RELEASE;}catch(_){ }
   try{
@@ -4275,7 +4321,7 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
  }
  function announce(){const release=current();if(storageGet(seenKey)!==releaseId(release))show(release);}
  function start(){announce();check();setInterval(()=>{if(!document.hidden)check();},60000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)check();});addEventListener('focus',check);}
- Z.updates={check,announce,refresh};document.readyState==='loading'?document.addEventListener('DOMContentLoaded',start):start();
+ Z.updates={check,announce,refresh};const startWhenUnlocked=()=>Promise.resolve(Z.access?.ready).then(start);document.readyState==='loading'?document.addEventListener('DOMContentLoaded',startWhenUnlocked):startWhenUnlocked();
 })();
 
 </script>
