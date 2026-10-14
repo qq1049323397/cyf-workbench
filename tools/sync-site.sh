@@ -96,6 +96,21 @@ else
 fi
 echo
 
+# Release manifest is derived from the same HTML and build stamp as the deployed page.
+python3 - <<'PY_RELEASE'
+import json,re
+from pathlib import Path
+src=Path('index.html').read_text()
+def value(name):
+    match=re.search(r"const "+name+r"='([^']+)'",src)
+    if not match: raise SystemExit('Missing '+name)
+    return match.group(1)
+notes=re.search(r'const WORKBENCH_RELEASE=(\{[^\n]+\});',src)
+if not notes: raise SystemExit('Missing WORKBENCH_RELEASE')
+release={'version':value('WORKBENCH_VERSION'),'build':value('WORKBENCH_BUILD'),**json.loads(notes.group(1))}
+Path('release.json').write_text(json.dumps(release,ensure_ascii=False,indent=2)+'\n')
+PY_RELEASE
+
 # —— 发布前检查 ——
 if [ "${NO_VERIFY:-0}" != "1" ]; then
   if [ -x "$WB_DIR/tools/probe-http.sh" ] && [ -f "$WB_DIR/tools/asserts/version.js" ]; then
@@ -120,12 +135,12 @@ if [ "${NO_VERIFY:-0}" != "1" ]; then
 fi
 
 # —— 提交推送 ——
-if git diff --quiet -- index.html RP-Hub-main && git diff --cached --quiet -- index.html RP-Hub-main; then
+if git diff --quiet -- index.html RP-Hub-main release.json && git diff --cached --quiet -- index.html RP-Hub-main release.json && [ -z "$(git ls-files --others --exclude-standard -- release.json)" ]; then
   echo "index.html 和 RP-Hub-main/ 的内容跟已提交的一模一样，没什么要提交的。"
   exit 0
 fi
 
-git add index.html RP-Hub-main
+git add index.html RP-Hub-main release.json
 MSG="${MSG:-site: 更新到 v$NEW_VER}"
 git commit -q -m "$MSG"
 echo "✓ 已提交: $MSG"
@@ -136,4 +151,4 @@ if [ "${NO_PUSH:-0}" = "1" ]; then
 fi
 
 git push
-echo "✓ 已推送。服务器那边 git pull 一次就生效了。"
+echo "✓ 已推送。GitHub Pages 将从 main 分支发布；请核对线上 release.json 与构建戳。"
