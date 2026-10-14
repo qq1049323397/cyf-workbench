@@ -102,6 +102,9 @@
   async function applyConfig(payload) {
     var S = storage();
     if (!S) throw new Error('RP-Hub 的存储模块还没就绪，稍后再试');
+    var configId = payload && payload.configId;
+    var nested = payload && payload.config;
+    if (nested) payload = { apiUrl: nested.base, apiKey: nested.key, model: nested.model };
     var current = (await S.getStoredValue('settings')) || {};
     if (typeof current !== 'object' || Array.isArray(current)) current = {};
 
@@ -119,7 +122,7 @@
 
     await S.setStoredValue('settings', next);
     // total 是合并后整个 settings 的字段数：工作台靠它确认写入是合并而不是覆盖
-    post('RPWB_CONFIGURED', { applied: applied.length, keys: applied, total: Object.keys(next).length });
+    post('RPWB_CONFIGURED', { configId: configId, model: next.model || '', applied: applied.length, keys: applied, total: Object.keys(next).length, willReload: applied.length > 0 });
 
     // RP-Hub 的 settings 是启动时读进响应式对象的，写完必须重载才生效。
     // 一个字段都没变就不折腾了——工作台靠 applied 判断要不要等这次重载。
@@ -230,7 +233,8 @@
   window.addEventListener('message', function (event) {
     var data = event.data;
     if (!data || typeof data !== 'object') return;
-    if (TOKEN && data.token && data.token !== TOKEN) return;
+    if (event.source !== window.parent || (/^https?:$/.test(location.protocol) && event.origin !== location.origin)) return;
+    if (TOKEN && data.token !== TOKEN) return;
 
     var run = function (fn) {
       Promise.resolve()
