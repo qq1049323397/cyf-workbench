@@ -31,6 +31,17 @@ read_version() {
   grep -oE "const WORKBENCH_VERSION='[^']+'" "$1" 2>/dev/null | head -1 | sed "s/.*'\(.*\)'/\1/"
 }
 
+# 构建戳：日期 + 源码仓库的短 sha（没有 git 就用源码内容哈希兜底）。
+# 存在的理由：WORKBENCH_VERSION 是手改的语义号，忘了改也看不出来，
+# 而构建戳每次同步都不同，线上角标一眼就能判断新旧。
+build_stamp() {
+  local date repo
+  date="$(date +%Y.%m.%d)"
+  repo="$(git -C "$(dirname "$SOURCE")" rev-parse --short HEAD 2>/dev/null || true)"
+  [ -n "$repo" ] || repo="$(md5sum "$SOURCE" | cut -c1-7)"
+  printf '%s.%s' "$date" "$repo"
+}
+
 NEW_VER="$(read_version "$SOURCE")"
 OLD_VER="$(read_version index.html 2>/dev/null || true)"
 [ -n "$NEW_VER" ] || { echo "✗ 源码里读不到 WORKBENCH_VERSION，先确认文件对不对" >&2; exit 2; }
@@ -39,7 +50,8 @@ echo "源码   : $SOURCE"
 echo "新版本 : v$NEW_VER"
 echo "当前   : v${OLD_VER:-（无）}"
 if [ "$NEW_VER" = "$OLD_VER" ]; then
-  echo "提示   : 版本号和线上一样，如果这次改了功能，记得把源码里的 WORKBENCH_VERSION 往上提一档。"
+  echo "提示   : 版本号和线上一样。构建戳会自动更新，所以线上仍然能看出是新构建；"
+  echo "         但如果这次改了功能，还是把源码里的 WORKBENCH_VERSION 往上提一档。"
 else
   echo "版本   : v${OLD_VER:-?} → v$NEW_VER"
 fi
@@ -50,14 +62,33 @@ cp "$SOURCE" index.html
 chmod 644 index.html
 echo "✓ 已更新 index.html（$(du -h index.html | cut -f1)）"
 
+# —— 戳构建戳 ——
+# 源码里是 'dev'，发布出去的必须是「日期.sha」。这一步不能省：
+# 少了它，线上角标就永远停在 dev，版本号又看不出新旧，又回到分不清部署的处境。
+BUILD="$(build_stamp)"
+if grep -q "const WORKBENCH_BUILD='" index.html; then
+  sed -i "s/const WORKBENCH_BUILD='[^']*'/const WORKBENCH_BUILD='$BUILD'/" index.html
+  grep -q "const WORKBENCH_BUILD='$BUILD'" index.html || {
+    echo "✗ 构建戳没写进去，index.html 已复制但未提交" >&2; exit 1; }
+  echo "✓ 构建戳: $BUILD"
+else
+  echo "⚠ 源码里没有 WORKBENCH_BUILD 常量（旧版工作台），跳过戳构建戳" >&2
+fi
+echo
+
 # —— 发布前检查 ——
 if [ "${NO_VERIFY:-0}" != "1" ]; then
   WB_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
   if [ -x "$WB_DIR/tools/probe-http.sh" ] && [ -f "$WB_DIR/tools/asserts/version.js" ]; then
     echo "→ 检查：HTTP 下能否正常启动、版本角标对不对"
     if "$WB_DIR/tools/probe-http.sh" "$REPO_ROOT" "$WB_DIR/tools/asserts/version.js" 30000 >/tmp/sync-verify.log 2>&1; then
-      grep -E '^(declared_version|badge_text|version_ok)=' /tmp/sync-verify.log | sed 's/^/    /'
-      echo "✓ 启动检查通过"
+      grep -E '^(declared_version|badge_text|declared_build|build_badge_text|version_ok|build_ok|build_is_dev)=' /tmp/sync-verify.log | sed 's/^/    /'
+      if grep -q '^build_is_dev=true$' /tmp/sync-verify.log; then
+        echo "✗ 构建戳还是 dev，说明没戳上——拒绝提交。" >&2
+        echo "  先确认源码里有 const WORKBENCH_BUILD='...' 这一行。" >&2
+        exit 1
+      fi
+      echo "✓ 启动检查通过（版本号 + 构建戳都对）"
     else
       echo "✗ 启动检查没过，没有提交。详情：" >&2
       sed 's/^/    /' /tmp/sync-verify.log >&2

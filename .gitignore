@@ -1,5 +1,7 @@
-# 「试玩当前卡片」用的运行时，由 tools/install-runtime.sh 本地生成，不入库
-RP-Hub-main/
+# 「试玩当前卡片」用的运行时。现在随仓库一起提供，装好即用——
+# 服务器不用再跑 install-runtime.sh，对方拿到就能试玩。
+# （install-runtime.sh 仍保留，用于从 index.html 内置快照重新生成/升级运行时。）
+# RP-Hub-main/
 
 # 探针临时文件
 .probe-http-*.html
