@@ -197,7 +197,7 @@ FORM: 高级创作指挥台；已通过交互预览确认。
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
 --><a class="skip-link" href="#main-content">跳到主要内容</a><div id="app" class="app-shell">
 <aside class="sidebar" aria-label="主导航"><a class="brand" href="#home" data-nav="home"><span class="brand-mark">境</span><span><strong>CYF综合工作台</strong><small>AI 角色卡工程台</small></span></a><nav class="nav-list"><button class="nav-item is-active" data-nav="home">创作首页</button><button class="nav-item" data-nav="workspace">角色卡工程</button><button class="nav-item" data-nav="audit">体检与修复</button><button class="nav-item" data-nav="publish">发布与保护</button><button class="nav-item" data-nav="settings">源码与工作区</button></nav><div class="sidebar-note"><strong>本地工程模式</strong><span>卡片、密钥与工作区索引保存在本机；AI 只接收当前任务需要的内容。</span></div></aside>
-<div class="app-main"><header class="topbar"><button class="mobile-menu" type="button">菜单</button><div class="status-strip"><span class="status-chip" id="api-status">API 未连接</span><span class="status-chip" id="baseline-status">RP-Hub 内置基线</span><span class="status-chip" id="workspace-status">未建工作区</span><span class="status-chip" id="version-status" title="工作台版本">v1.2.0</span><span class="status-chip" id="version-build" title="构建戳：日期.sha，用来判断线上是不是最新版">dev</span></div></header><main id="main-content" tabindex="-1">
+<div class="app-main"><header class="topbar"><button class="mobile-menu" type="button">菜单</button><div class="status-strip"><span class="status-chip" id="api-status">API 未连接</span><span class="status-chip" id="baseline-status">RP-Hub 内置基线</span><span class="status-chip" id="workspace-status">未建工作区</span><span class="status-chip" id="version-status" title="工作台版本">v1.2.1</span><span class="status-chip" id="version-build" title="构建戳：日期.sha，用来判断线上是不是最新版">dev</span></div></header><main id="main-content" tabindex="-1">
 <section class="view is-active" data-view="home"><div class="hero"><div><h1>把一张设想，<br>铸成可运行的世界。</h1><p>从一句设想开始。CYF综合工作台会优先参照 RP-Hub 源码与工作区素材，生成可编辑、可体检、可直接导出的角色卡工程。</p><div class="hero-actions"><button class="primary" data-action="new">新建角色卡工程</button><button class="secondary" data-action="import">导入已有卡片</button><input id="file-input" type="file" accept=".json,.png,application/json,image/png" hidden></div></div><aside class="evidence-rail"><span>每次生成都有依据</span><ol><li><b>01</b>理解目标</li><li><b>02</b>检索成熟做法</li><li><b>03</b>生成可撤销补丁</li><li><b>04</b>运行三类审核</li></ol></aside></div><div class="prompt-panel"><label for="goal-input">描述你想进入的角色与世界</label><textarea id="goal-input" rows="4" placeholder="例如：做一张古风悬疑卡，开场要有强钩子；正文 UI 要稳定，不依赖脚本。"></textarea><div class="prompt-foot"><span id="goal-hint">不用先懂字段、正则或变量桥；先说清楚你想玩的体验。</span><button class="primary" data-action="plan">生成制作建议</button></div></div><div class="home-grid"><article><h2>源码优先</h2><p id="baseline-copy">字段、运行时、UI 和导出遇到疑问时，AI 先检索 RP-Hub 源码再回答。</p></article><article><h2>工程资源</h2><p>工作区中的参考卡、图片、代码与设定资料，都可以被读取、预览并用于当前工程。</p></article><article><h2>质量控制</h2><p>运行、体验与提交规则分层检查；问题可定位、可修复，也不会把本地检查冒充绝对过审。</p></article></div><div id="plan-output" class="plan-output" hidden></div></section>
 <section class="view" data-view="workspace"><div class="section-head"><div><h1>卡片工作区</h1><p>结构化编辑，不用在整份 JSON 里找字段。</p></div><div><button class="secondary" data-action="undo">撤销上次修改</button><button class="primary" data-action="save">保存到浏览器</button></div></div><div class="editor-layout"><form id="card-form" class="editor"><label>角色名<input name="name" placeholder="角色名"></label><label>一句话定位<input name="description" placeholder="身份、核心矛盾与体验承诺"></label><label>人物设定<textarea name="personality" rows="7" placeholder="性格、动机、边界、说话方式"></textarea></label><label>场景设定<textarea name="scenario" rows="6" placeholder="当前世界、关系与冲突"></textarea></label><label>开场白<textarea name="first_mes" rows="12" placeholder="支持文本与宿主前端允许的 HTML/CSS"></textarea></label><label>示例对话<textarea name="mes_example" rows="7" placeholder="用几轮对话固定语气与行为边界"></textarea></label></form><aside class="inspector"><h2>工程清单</h2><div id="inventory"></div><h2>世界书</h2><div id="lore-summary"></div><button class="secondary wide" data-action="audit">按过审规则体检</button></aside></div></section>
 <section class="view" data-view="audit"><div class="section-head"><div><h1>质量控制台</h1><p>运行、体验与提交规则并行检查；每个问题都指向具体字段与修复动作。</p></div><button class="primary" data-action="audit">重新体检</button></div><div id="audit-summary" class="audit-summary" aria-live="polite"></div><div class="audit-tabs"><button class="is-active" data-audit-tab="runtime">运行审核</button><button data-audit-tab="quality">质量审核</button><button data-audit-tab="submission">提交审核（过审规则）</button></div><div id="audit-results"></div></section>
@@ -214,10 +214,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
      改版本时只改这一处，然后跑 tools/package.sh 重新打包。
      格式必须严格是 x.y.z——tools/asserts/version.js 用 /^\d+\.\d+\.\d+$/ 校验，
      所以构建戳不能拼在这里，只能放下面的 WORKBENCH_BUILD。 */
-  const WORKBENCH_VERSION='1.2.0';
+  const WORKBENCH_VERSION='1.2.1';
   /* 构建戳：由 tools/sync-site.sh 在同步时自动改写成「日期.sha」，手改这里没有意义。
      它存在的理由就是版本号看不出来的那件事——线上跑的到底是哪一次构建。 */
-  const WORKBENCH_BUILD='2026.10.14.edd1959';
+  const WORKBENCH_BUILD='2026.10.14.cebfeab';
   /* 注意：工厂函数里没有 root 这个变量（root 只是外层 IIFE 的参数），必须用 globalThis。 */
   try{globalThis.Zaojing=globalThis.Zaojing||{};globalThis.Zaojing.version=WORKBENCH_VERSION;globalThis.Zaojing.build=WORKBENCH_BUILD;}catch(_){ }
   try{
@@ -3303,7 +3303,17 @@ document.addEventListener('click',e=>{const button=e.target.closest('[data-diff-
 (function(){
  'use strict';const Z=globalThis.Zaojing,repo='STA1N156/RP-Hub',api='https://api.github.com/repos/'+repo;let selected=null,evidence=null,available=null,checkedAt=null,network='unknown';
  const embedded={id:'embedded-1.8.9',name:'RP-Hub 1.8.9 内置基线',origin:'embedded',runtimeUrl:null};
- function database(){return new Promise((resolve,reject)=>{const r=indexedDB.open('zaojingtai-portable-source',1);r.onupgradeneeded=()=>r.result.createObjectStore('source');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});}
+ function database(){return new Promise((resolve,reject)=>{
+  // 这里以前没有兜底：file:// 下 Chrome 有时把源当成不透明源，indexedDB.open()
+  // 的回调可能一直不来，于是 init() 永不返回、整个工作台永久停在「加载中」。
+  // 实测跑 baseline-offline 断言时偶发（同一份文件九次里挂一次）。
+  // 加个上限，超时就当存储不可用——内置基线照样能用，只是不记住选择。
+  let done=false,timer=null;
+  const ok=v=>{if(done)return;done=true;clearTimeout(timer);resolve(v);};
+  const fail=e=>{if(done)return;done=true;clearTimeout(timer);reject(e||Error('IndexedDB 不可用'));};
+  timer=setTimeout(()=>fail(Error('IndexedDB 打开超时')),3000);
+  let r;try{r=indexedDB.open('zaojingtai-portable-source',1);}catch(e){return fail(e);}
+  r.onupgradeneeded=()=>r.result.createObjectStore('source');r.onsuccess=()=>ok(r.result);r.onerror=()=>fail(r.error);r.onblocked=()=>fail(Error('IndexedDB 被其他标签页占用'));});}
  async function cache(value){const db=await database();try{return await new Promise((resolve,reject)=>{const tx=db.transaction('source',value?'readwrite':'readonly'),store=tx.objectStore('source');let result;if(value)store.put(value,'selected');else{const r=store.get('selected');r.onsuccess=()=>result=r.result;}tx.oncomplete=()=>resolve(result);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});}finally{db.close();}}
  function status(){return{selected:selected||embedded,selectedIsUpstream:selected?.origin==='browser-upstream',available,checkedAt,network,updateAvailable:!!(available&&selected?.origin==='browser-upstream'&&available!==selected.id),portable:true};}
  async function fetchSafe(url,json=true){let response;try{response=await fetch(url,{signal:AbortSignal.timeout(20000),credentials:'omit'});}catch(_){throw Error('无法连接 GitHub，可能是网络或浏览器跨域限制。当前源码仍可用于做卡；也可手动选择源码文件夹。');}if(!response.ok)throw Error(response.status===403||response.status===429?'GitHub 请求额度已用尽，请稍后重试或选择源码文件夹。':'GitHub 源码读取失败（HTTP '+response.status+'），当前源码保留。');return json?response.json():response.text();}
