@@ -265,6 +265,11 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 'use strict';
 const cardMeta=c=>(c.data||c).extensions?.rp_studio||{};
 const enabled=e=>e.enabled!==false&&e.disable!==true&&e.disabled!==true;
+/* 条目字段规范化：卡片 JSON 可能来自别的工具——缺 content、keys 写成裸字符串、
+   世界书 entries 写成对象而不是数组，都会让规则本身崩掉。规则应该报出问题，而不是自己抛异常。 */
+const entriesOf=c=>{const b=c?.character_book;const list=b&&b.entries;return Array.isArray(list)?list.filter(e=>e&&typeof e==='object'):[];};
+const keysOf=e=>Array.isArray(e?.keys)?e.keys:(Array.isArray(e?.extensions?.keys)?e.extensions.keys:[]);
+const textOf=e=>String(e?.content??'');
 /* 高误触词：任何场景的普通叙述都可能自然写出的词。
    判据来自 skill:references/keyword-design.md §三「泛词键」与
    rules-wb-architect.md AP-03：跨场景词、日常动作、情绪、通用身体部位、通用名词。
@@ -291,6 +296,25 @@ const MIS_TRIGGER = new Set([
    处方见 keyword-design.md:210 与 rules-wb-architect.md:433。 */
 const PROBABILITY_MAX = 60;
 const isMisTrigger = key => MIS_TRIGGER.has(key);
+
+/* 万能词（闸1 要罚的那几个）。提到模块作用域是因为闸5 也要用它做排除：
+   一个键不能一边被闸1 判成万能词、一边被闸5 当成合格的泛词兜底。 */
+const UNIVERSAL_KEYS = ['性爱', '做爱', '亲密', '性交', '爱', '上床', '干她', '来一发'];
+
+/* 闸5 用的泛类词表：人物 / 场所 / 情绪 / 话题动作四类「低门槛入口」。
+   只收 ≥2 字的整词：单字（如「他」「她」）任何正文都会命中，等于没有兜底；
+   也不收 MIS_TRIGGER 里的通用动作情绪（「靠近」「紧张」那些是闸9 的误触词，
+   不能一条规则罚、另一条规则当成好入口）。这张表对所有卡通用，没有卡专有词。 */
+const BROAD_KEYS = [
+  /* 泛指人物 */
+  '别人', '路人', '大家', '有人', '旁人', '陌生人', '邻居', '同学', '同事', '围观', '人群',
+  /* 泛指场所 */
+  '附近', '周围', '街上', '路边', '家里', '屋里', '店里', '门外', '外面', '角落', '楼下', '窗边',
+  /* 泛指情绪 */
+  '心情', '情绪', '气氛', '沉默', '尴尬', '开心', '难过', '生气', '害怕', '担心', '在意', '委屈',
+  /* 话题与日常动作 */
+  '说话', '聊天', '交谈', '打招呼', '路过', '听说', '闲聊', '日常',
+];
 
 
 const isToken=k=>/^(?:[^：]{1,8}：|.*→)/.test(k);
@@ -327,7 +351,31 @@ const synonyms=[
  ['关店','关店 打烊 收摊 锁店门 书店关门'],['煮面','煮面 阳春面 卧蛋 下面条 做碗面'],['下雨','下雨天 雨伞 淋湿 淋雨 避雨'],['停电','停电 蜡烛 跳闸 没电 电闸'],['借书','借书 还书 借书卡 借本书 办借书证'],['牵手','牵手 拉手 握手 十指相扣 牵住她'],['涂药','涂药 上药 药膏 擦药 换药'],['吹头发','吹头发 吹干头发 吹头 吹风机 擦头发'],['菜市场','菜市场 买菜 挑菜 逛菜场 菜篮子'],['发烧','发烧 退烧 买药 体温计 量体温'],['医院','医院 挂号 看病 门诊 候诊'],['便利店','便利店 买烟 关东煮 夜间小店 逛便利店'],['地铁','地铁 末班车 地铁站 赶车 末班地铁'],['搬书','搬书 整理书架 书架 腰闪 搬书箱'],['相册','相册 老照片 旧照片 翻相册 合影'],['剪指甲','剪指甲 指甲刀 修指甲 指甲钳 帮剪指甲'],['吃醋','吃醋 醋意 嫉妒 不高兴 误会'],['靠肩','靠肩 靠一下 靠肩膀 眯一会儿 借肩膀'],['装修','装修 电钻 楼上施工 钻墙 噪音'],['教师节','教师节 贺卡 以前的学生 节日祝福 教师节礼物']
 ].map(([head,words])=>({head,words:words.split(' ')}));
 function characterNames(card){const d=card.data||card,meta=d.extensions?.rp_studio||{},declared=(Array.isArray(meta.blueprint?.characters)?meta.blueprint.characters:[]).map(x=>x.name).filter(x=>/^[\p{Script=Han}]{2,4}$/u.test(x));if(declared.length)return [...new Set(declared)];const m=String(d.description||'').match(/^\s*(?:【)?([\p{Script=Han}]{2,4})(?=[，,（(：:])/u);return m&&/^[赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦尤许何吕施张孔曹严华金魏陶姜戚谢邹窦章云苏潘葛奚范彭郎鲁韦昌马苗方任袁柳唐费薛雷贺倪汤殷罗毕郝安常傅顾孟黄和萧尹姚邵汪祁毛禹狄米贝明臧成戴宋茅庞熊纪舒项祝董梁杜阮蓝闵席季麻强贾路娄危江童颜郭梅盛林刁钟徐邱骆高夏蔡田胡霍万卢莫房解应丁宣邓洪石崔龚程陆翁].[\p{Script=Han}]{0,2}$/u.test(m[1])?[m[1]]:[];}
-function keyCandidates(entry){const title=String(entry.comment||entry.name||'');return [title,...synonyms.filter(r=>title.includes(r.head)).flatMap(r=>r.words)];}
+/* ── 卡自己的术语（通用，无卡专有词表）────────────────────────────────
+   本地补词的来源原本只有历史自然入口、标题切分、主题同义词表。任意一张卡还可能有第四种：
+   作者自己在正文里用结构化标记声明的术语。只认作者声明过的，不猜词——
+   试过「正文里跨条目复现的 2–4 字片段」那种挖法，在真实卡上挖出来的是
+   「起来 / 时候 / 动作 / 声音」这类虚词和通用动作，补进 keywords 等于制造新的无指向键。
+   只收「」『』“”引号里的短语：那是作者按「玩家会说的话」写下来的台词与说法。
+   【】小节名试过，但在真实卡上把「文风强制」「色情化」「输出」这类指令标签也挖了出来，
+   补进 keywords 就是新的废键，所以不收。常驻条目和令牌条目本来就整条跳过
+   （repairKeys 首行对它们原样返回），这里也不从它们身上取词。
+   仍然要求 2–6 字、纯中日韩字母数字、不是碎片/误触词/万能词/已有键，
+   并且作为候选池的最后一档（标题与同义词永远优先）。 */
+const mineScratch=new Set();
+function collectTerms(text,out,seenEntry){
+ for(const m of String(text||'').matchAll(/[「『“"]([^」』”"]{2,12})[」』”"]/g)){
+  const w=m[1].trim();
+  if(!seenEntry.has(w)){seenEntry.add(w);out.set(w,(out.get(w)||0)+1);}
+ }
+}
+function mineTerms(card,limit=24){
+ const d=card?.data||card?.project?.card?.data||card||{},entries=(Array.isArray(d.character_book?.entries)?d.character_book.entries:[]).filter(e=>e&&e.enabled!==false&&!e.disabled);
+ const out=new Map();
+ for(const e of entries){if(e.constant===true||(Array.isArray(e.keys)&&e.keys.some(isToken)))continue;const seen=new Set();collectTerms(e.content,out,seen);collectTerms(e.comment,out,seen);}
+ return [...out.keys()].filter(w=>/^[\p{L}\p{N}]{2,6}$/u.test(w)&&!isToken(w)&&!MIS_TRIGGER.has(w)&&!UNIVERSAL_KEYS.includes(w)&&!/[，。！？；、]/.test(w)).slice(0,limit);
+}
+function keyCandidates(entry,terms=[]){const title=String(entry.comment||entry.name||'');return [title,...synonyms.filter(r=>title.includes(r.head)).flatMap(r=>r.words),...(Array.isArray(terms)?terms:[])];}
 /* opts.avoid 为真时，跳过 opts.avoidText（一般是开场白正文）里出现的词。
    开场白里的词本来就是最自然的入口，只有首轮名额不够了才需要让路，
    所以这个过滤默认关着，由调用方按当前密度决定要不要打开。 */
@@ -335,7 +383,7 @@ function supplement(entry,occupied=new Set(),opts={}){
  const old=Array.isArray(entry.keys)?[...entry.keys]:[],limits=keyCount(entry),title=String(entry.comment||entry.name||''),a=[...old];
  if(entry.constant||old.some(isToken))return old;
  const avoidText=opts.avoid?String(opts.avoidText||''):'';
- for(const k of keyCandidates(entry)){if(a.length>=limits.target)break;if(!/^[\p{L}\p{N}]{2,6}$/u.test(k)||isFragment(k,title)||MIS_TRIGGER.has(k)||occupied.has(k)||a.includes(k))continue;if(avoidText&&avoidText.includes(k))continue;a.push(k);occupied.add(k);}
+ for(const k of keyCandidates(entry,opts.terms)){if(a.length>=limits.target)break;if(!/^[\p{L}\p{N}]{2,6}$/u.test(k)||isFragment(k,title)||MIS_TRIGGER.has(k)||occupied.has(k)||a.includes(k))continue;if(avoidText&&avoidText.includes(k))continue;a.push(k);occupied.add(k);}
  return a;
 }
 /* 首轮名额：再拉一条（按 extraChars 字算）会不会把闸10 顶成 error。
@@ -347,7 +395,9 @@ function firstTurnOverload(dens,extraChars=0){const v=verdictOf((dens?.totalCoun
    一个合格词都凑不出来就原样返回（碎片键留着、错误继续报出来），交给 AI Diff 流程，
    绝不把碎片键当成「已经修好」悄悄放回去。 */
 function repairKeys(entry,opts={}){
-  const raw=Array.isArray(entry.keys)?[...entry.keys]:[],title=String(entry.comment||entry.name||''),limits=keyCount(entry);
+  /* 条目内把同一个键写两遍（多打一次、或带空格复制）是笔误，本地直接去掉再算，
+     不必报成「两条条目共用」让玩家去猜。跨条目的共用仍然照常报。 */
+  const raw=[...new Set((Array.isArray(entry.keys)?entry.keys:[]).map(k=>String(k||'').trim()).filter(Boolean))],title=String(entry.comment||entry.name||''),limits=keyCount(entry);
   if(entry.constant||raw.some(isToken))return raw;
   const occupied=opts.occupied instanceof Set?opts.occupied:new Set(opts.occupied||[]);
   const firstMes=String(opts.firstMes||''),budgetFull=opts.budgetFull===true;
@@ -356,7 +406,7 @@ function repairKeys(entry,opts={}){
   /* 纯中文标题没有分隔符，按分隔符切只会切出它自己。
      它的头两个字和尾两个字通常就是玩家会说的说法（拾光书店 → 拾光 / 书店），补上这两个。 */
   const split=[...new Set([...title.split(/[^\p{L}\p{N}]+/u),...(title.length>=3&&title.length<=6?[title.slice(0,2),title.slice(-2)]:[])])].filter(w=>w.length>=2&&w.length<=6);
-  const pool=[...new Set([...pending,title,...split,...synonyms.filter(r=>title.includes(r.head)).flatMap(r=>r.words),...(opts.extra||[])])];
+  const pool=[...new Set([...pending,title,...split,...synonyms.filter(r=>title.includes(r.head)).flatMap(r=>r.words),...(opts.terms||[]),...(opts.extra||[])])];
   const bad=k=>!k||!/^[\p{L}\p{N}]{2,6}$/u.test(k)||a.includes(k)||isFragment(k,title)||MIS_TRIGGER.has(k)||occupied.has(k);
   for(const k of pool){if(a.length>=limits.target)break;if(bad(k)||firstMes.includes(k))continue;a.push(k);}
   /* 开场白里的词只在「一个合格词都没有」或「凑不出二字键」时动用。
@@ -370,7 +420,7 @@ function repairKeys(entry,opts={}){
   if(a.length<2||!a.some(k=>k.length===2))return raw;
   return a;
 }
-const keyPolicy={min:2,max:10,sceneTarget:5,isToken,isFragment,evaluate,clean:cleanKeys,supplement,candidates:keyCandidates,repair:repairKeys,limits:keyCount,naturalKey,characterNames,prompt:'人物主题通常 2–4 个入口；场景、事件和难触发条目 5–10 个自然关键词，单条最多 10 个、长度 2–6 字，至少一个二字入口。保留自然旧键，补玩家会说的同义词、标题专名和动作情境；禁止正文碎片、无指向虚词。角色名只用于人物总档或索引，不得全卡每条都放同一个角色名；现有全卡共用限制保持。'};
+const keyPolicy={min:2,max:10,sceneTarget:5,isToken,isFragment,evaluate,clean:cleanKeys,supplement,candidates:keyCandidates,repair:repairKeys,mineTerms,limits:keyCount,naturalKey,characterNames,prompt:'人物主题通常 2–4 个入口；场景、事件和难触发条目 5–10 个自然关键词，单条最多 10 个、长度 2–6 字，至少一个二字入口。保留自然旧键，补玩家会说的同义词、标题专名和动作情境；禁止正文碎片、无指向虚词。角色名只用于人物总档或索引，不得全卡每条都放同一个角色名；现有全卡共用限制保持。'};
 const anchorStops=new Set('凌晨 一次 一碗 一半 手写 慢慢 关店 睡觉 点醒'.split(' '));
 const segmenter=new Intl.Segmenter('zh',{granularity:'word'});
 function anchorTerms(anchor,background){
@@ -381,7 +431,7 @@ function anchorTerms(anchor,background){
  return [...new Set(candidates)].filter(t=>/^[\p{Script=Han}\d]{2,6}$/u.test(t)&&!anchorStops.has(t)&&(background.includes(t)||background.replace(/那道|这道|旧/g,'').includes(t)));
 }
 function validateAnchorDesign(obj){const d=obj.data||obj,anchors=obj.blueprint?.playAnchors||[],text=String(d.description||'')+'\n'+String(d.first_mes||'');const invalid=anchors.filter(a=>!/^[\p{Script=Han}\d]{2,6}$/u.test(a)||/不给|只拉|没退|慢慢来|醒一次|关店|睡觉/.test(a)||!text.includes(a));if(invalid.length)throw Error('玩法锚点必须是简介或开场中已有的 2–6 字专名或名词，不能用整句：'+invalid.join('、'));return anchors;}
-function resolveAnchors(card){const d=card.data||card,entries=d.character_book?.entries||[],m=cardMeta(card),background=[d.description,d.first_mes,d.scenario,d.personality,m.creativeBrief,...entries.filter(e=>enabled(e)&&['profile','runtime','protocol','character','world'].includes(e.extensions?.rp_studio?.category)).map(e=>e.content)].filter(Boolean).join('\n');return (m.blueprint?.playAnchors||[]).map(label=>({label,terms:anchorTerms(label,background)}));}
+function resolveAnchors(card){const d=card.data||card,entries=entriesOf(d),m=cardMeta(card),background=[d.description,d.first_mes,d.scenario,d.personality,m.creativeBrief,...entries.filter(e=>enabled(e)&&['profile','runtime','protocol','character','world'].includes(e.extensions?.rp_studio?.category)).map(e=>e.content)].filter(Boolean).join('\n');return (m.blueprint?.playAnchors||[]).map(label=>({label,terms:anchorTerms(label,background)}));}
 function matchesAnchor(text,resolved){return resolved.some(a=>a.terms.some(t=>String(text||'').includes(t)));}
 /* ── 闸10 首轮拉取预算 ──────────────────────────────────────────────
    条数基准沿用 5-6 健康 / 7-8 可接受 / 10+ 过高 / 30+ 病态。
@@ -400,52 +450,59 @@ function verdictOf(totalCount,totalChars=0){
   if(totalCount>=FIRST_TURN.countOk)return '可接受';
   return '健康';
 }
-function probeDensity(card,turnText){const d=card.data||card,live=(d.character_book?.entries||[]).filter(enabled),con=live.filter(e=>e.constant===true||e.extensions?.constant===true),trig=live.filter(e=>!(e.constant===true||e.extensions?.constant===true)),text=String(turnText??d.first_mes??''),detail=[];for(const e of trig){const hit=(e.keys||[]).filter(k=>!isToken(k)&&k.length>=2&&text.toLocaleLowerCase().includes(k.toLocaleLowerCase()));if(hit.length)detail.push({comment:e.comment||'(未命名)',chars:cjk(e.content),hit});}const constChars=con.reduce((n,e)=>n+cjk(e.content),0),pulledChars=detail.reduce((n,e)=>n+e.chars,0),totalCount=con.length+detail.length;return {constCount:con.length,constChars,pulledCount:detail.length,pulledChars,totalCount,totalChars:constChars+pulledChars,verdict:verdictOf(totalCount,constChars+pulledChars),detail,mode:DENSITY_MODE,limits:{...FIRST_TURN}};}
+function probeDensity(card,turnText){const d=card.data||card,live=entriesOf(d).filter(enabled),con=live.filter(e=>e.constant===true||e.extensions?.constant===true),trig=live.filter(e=>!(e.constant===true||e.extensions?.constant===true)),text=String(turnText??d.first_mes??''),detail=[];for(const e of trig){const hit=keysOf(e).filter(k=>!isToken(k)&&k.length>=2&&text.toLocaleLowerCase().includes(k.toLocaleLowerCase()));if(hit.length)detail.push({comment:e.comment||'(未命名)',chars:cjk(e.content),hit});}const constChars=con.reduce((n,e)=>n+cjk(e.content),0),pulledChars=detail.reduce((n,e)=>n+e.chars,0),totalCount=con.length+detail.length;return {constCount:con.length,constChars,pulledCount:detail.length,pulledChars,totalCount,totalChars:constChars+pulledChars,verdict:verdictOf(totalCount,constChars+pulledChars),detail,mode:DENSITY_MODE,limits:{...FIRST_TURN}};}
   function keywordGates(card){
-    const d=card.data||card, entries=(d.character_book||{}).entries||[], out=[];
+    const d=card.data||card, entries=entriesOf(d), out=[];
     const kind=d.extensions&&d.extensions.rp_studio&&d.extensions.rp_studio.cardKind;
     /* 肉卡条目多、靠玩家自然说出的话触发，没有流水线卡那套「开局就要把常驻层喂饱」的约束，
        所以闸3 的首轮种子在肉卡上只提醒不拦卡；万能词、共用 key、死键、署名仍然报红。 */
     const meat=kind==='meat';
     const isToken=k=>/^(?:[^：]{1,8}：|.*→)/.test(k);
-    const UNIVERSAL=['性爱','做爱','亲密','性交','爱','上床','干她','来一发'];
+    const UNIVERSAL=UNIVERSAL_KEYS;
     const live=entries.filter(e=>enabled(e)&&e.disable!==true&&e.disabled!==true);
     const trig=live.filter(e=>!(e.constant===true||e.extensions?.constant===true));
     const constText=live.filter(e=>e.constant===true||e.extensions?.constant===true).map(e=>String(e.content||'')).join('\n');
     const seedText=[d.first_mes,d.description,d.personality,d.scenario].filter(Boolean).join('\n')+'\n'+constText;
     const owners=new Map(); let tokenKeys=0;
+    /* 每条发现的稳定身份：条目 + 子问题种类。预检靠它认「同一条目上的同一类问题」，
+       不再从说明文字反推——否则「只修好一半」（少删一个词、说明文字一变）会被判成新错误整批拒掉。 */
+    const add=(gate,severity,detail,e,kind)=>{const f={gate,severity,detail};if(e){f.entryId=String(e.id??e.uid??e.comment??e.name??'');f.entryTitle=e.comment||e.name||'';}if(kind)f.kind=kind;out.push(f);return f;};
     for(const e of trig){
-      const keys=e.keys||(e.extensions&&e.extensions.keys)||[];
+      /* 同一条目里把同一个键写两遍是笔误，不是「两条条目共用」：先去重，再查跨条目共用。 */
+      const rawKeys=keysOf(e),keys=[...new Set(rawKeys)];
       const title=e.comment||e.name||'(未命名)';
-      if(!keys.length){out.push({gate:1,severity:'error',detail:title+'：无 keys，永远不会触发'});continue;}
+      if(!keys.length){add(1,'error',title+'：无 keys，永远不会触发',e,'no-keys');continue;}
       keys.forEach(k=>{
         if(isToken(k)){tokenKeys++;
           /* 闸2：令牌键必须在常驻状态栏模板里有发射位（左半段） */
           const head=k.split('：')[0];
-          if(!constText.includes(head+'：')&&!constText.includes(head))out.push({gate:2,severity:'error',detail:'令牌键「'+k+'」（'+title+'）在常驻状态栏模板中没有发射位，AI 不会印出它=死键'});
-          else if(!constText.includes(k)&&!constText.includes(k.replace(/：.*$/,'：')))out.push({gate:2,severity:'warning',detail:'令牌键「'+k+'」（'+title+'）与状态栏模板措辞不一致，请核对前缀'});
+          if(!constText.includes(head+'：')&&!constText.includes(head))add(2,'error','令牌键「'+k+'」（'+title+'）在常驻状态栏模板中没有发射位，AI 不会印出它=死键',e,'token-emitter');
+          else if(!constText.includes(k)&&!constText.includes(k.replace(/：.*$/,'：')))add(2,'warning','令牌键「'+k+'」（'+title+'）与状态栏模板措辞不一致，请核对前缀',e,'token-wording');
           return;
         }
-        if(k.length>20||/[，。！？\n]/.test(k))out.push({gate:1,severity:'error',detail:title+'：key「'+k+'」超 20 字或含标点，玩家打不出来'});
-        if(UNIVERSAL.includes(k))out.push({gate:1,severity:'error',detail:title+'：key「'+k+'」是万能词，会误触发其他条目'});
-        if(k.length>=2&&!e.content.includes(k)&&!seedText.includes(k)&&!naturalKey(e,k)&&!keys.some(route=>naturalKey(e,route)||String(e.content||'').includes(route)||seedText.includes(route)))out.push({gate:3,severity:'warning',detail:'key「'+k+'」（'+title+'）在本条正文与首轮种子中都不存在，只有玩家碰巧打出才触发'});
-        if(owners.has(k))out.push({gate:1,severity:'error',detail:'key「'+k+'」被两条条目共用：'+owners.get(k)+' 与 '+title+'，会同时误触发'});
-        else owners.set(k,title);
+        if(k.length>20||/[，。！？\n]/.test(k))add(1,'error',title+'：key「'+k+'」超 20 字或含标点，玩家打不出来',e,'key-format');
+        if(UNIVERSAL.includes(k))add(1,'error',title+'：key「'+k+'」是万能词，会误触发其他条目',e,'key-universal');
+        if(k.length>=2&&!textOf(e).includes(k)&&!seedText.includes(k)&&!naturalKey(e,k)&&!keys.some(route=>naturalKey(e,route)||String(e.content||'').includes(route)||seedText.includes(route)))add(3,'warning','key「'+k+'」（'+title+'）在本条正文与首轮种子中都不存在，只有玩家碰巧打出才触发',e,'key-not-in-text');
+        /* 共用只在「另一条条目也在用」时才算冲突。 */
+        if(owners.has(k)&&owners.get(k)!==title)add(1,'error','key「'+k+'」被两条条目共用：'+owners.get(k)+' 与 '+title+'，会同时误触发',e,'key-shared');
+        else if(!owners.has(k))owners.set(k,title);
       });
     }
     /* 闸3：首轮可激活的触发条目数 */
     let seeded=0;
     for(const e of trig){
-      const keys=e.keys||[];if(!keys.length)continue;
+      const keys=keysOf(e);if(!keys.length)continue;
       if(keys.some(k=>seedText.includes(k)))seeded++;
     }
     if(seeded<3)out.push({gate:3,severity:meat?'warning':'error',detail:'首轮种子不足：first_mes/常驻只能激活 '+seeded+' 条触发条目（要求 ≥3），开局会干烧常驻层'});
     /* 闸4：本地模拟扫描——模拟 AI 按状态栏模板回填令牌后，token 条目按序可达 */
-    let tokenEntries=trig.filter(e=>(e.keys||[]).some(isToken)).length;
+    let tokenEntries=trig.filter(e=>keysOf(e).some(isToken)).length;
     if(tokenEntries&&!constText.match(/状态栏|状态面板|═|━/))out.push({gate:4,severity:'warning',detail:'有 '+tokenEntries+' 条令牌条目但常驻层没有状态栏协议条目，令牌循环可能断链'});
-    /* 闸5：泛词兜底——NPC/场所/情绪至少一条低门槛入口 */
-    const broad=trig.some(e=>(e.keys||[]).some(k=>['别人','路人','平时','靠近','在意','他','她','说话','聊天'].includes(k)));
-    if(trig.length>=10&&!broad)out.push({gate:5,severity:'warning',detail:'缺少泛词兜底入口条目（NPC/场所/情绪类超泛词 keys），冷门路径会永远打不开'});
+    /* 闸5：泛词兜底——NPC/场所/情绪至少一条低门槛入口。
+       这是「可做可不做」的建议（见 docs/plans/2026-10-15-整个工作台审计…/§4.1）：
+       它既不拦导出，也不该被送进 AI 批次，更不该算进「修完了没」。 */
+    const broad=trig.some(e=>keysOf(e).some(k=>BROAD_KEYS.includes(k)&&k.length>=2&&!MIS_TRIGGER.has(k)&&!UNIVERSAL_KEYS.includes(k)));
+    if(trig.length>=10&&!broad)out.push({gate:5,severity:'warning',advisory:true,kind:'no-broad-fallback',detail:'缺少泛词兜底入口条目（NPC/场所/情绪类超泛词 keys），冷门路径会永远打不开；不加也能发布'});
     /* 署名检查（发布合规锚，不可移除） */
     if(!/仅在\s*Roleplay\s*Hub\s*发布/.test(String(d.scenario||'')))out.push({gate:0,severity:'error',detail:'scenario 缺少固定署名句【由XX制作，仅在Roleplay Hub发布】，禁止删除'});
     const push=(gate,severity,detail)=>out.push({gate,severity,detail});
@@ -454,7 +511,7 @@ function probeDensity(card,turnText){const d=card.data||card,live=(d.character_b
    通用高频词会让条目在任何场景被拉进来。处方是换成行为发生词，
    或挂 useProbability + probability ≤60。 */
 for (const e of trig) {
-  const keys = e.keys || [], title = e.comment || '(未命名)';
+  const keys = keysOf(e), title = e.comment || '(未命名)';
   /* 工作台读取原始 extensions 中的概率开关。
      被退卡上是 useProbability:true + probability:100 → 100 > 60，不豁免，22 个误触词照样报出来。 */
   const prob = e.extensions?.probability ?? e.probability;
@@ -462,19 +519,22 @@ for (const e of trig) {
   if (probOk) continue;
   const hits = keys.filter((k) => !isToken(k) && MIS_TRIGGER.has(k));
   if (hits.length) {
-    push(9, 'error', `${title}：key ${hits.map((k) => `「${k}」`).join('')} 是通用高频词，任何场景都会误触发；改成行为发生词，或挂 useProbability + probability≤${PROBABILITY_MAX}`);
+    add(9, 'error', `${title}：key ${hits.map((k) => `「${k}」`).join('')} 是通用高频词，任何场景都会误触发；改成行为发生词，或挂 useProbability + probability≤${PROBABILITY_MAX}`, e, 'mis-trigger');
   }
 }
 /* ── 闸10：单轮拉取密度 ──────────────────────────────────────────────
    把「常驻太多」「误触发」「触发字数多」三个病量化成一个指标。
-   基准：5-6 健康 / 7-8 可接受 / 10+ 过高 / 30+ 病态。 */
+   基准：5-6 健康 / 7-8 可接受 / 10+ 过高 / 30+ 病态。
+   只有病态拦卡；过高是警告（能发布，但建议缩）；可接受是可选建议，不进 AI 批次也不挡完成。
+   注意：档位判定 verdictOf 一个字都没动，Diff 那层的回退保护（firstTurnOverload）也不看 severity，
+   所以把过高从 error 降成 warning 不会让「9 条修成 25 条」这种回退溜过去。 */
 const dens = probeDensity(card);
 if (dens.verdict === '病态') {
   push(10, 'error', `单轮拉取 ${dens.totalCount} 条 / ${dens.totalChars} 字（病态，基准 5-6 健康、10+ 过高）：常驻 ${dens.constCount} 条 ${dens.constChars} 字 + 命中 ${dens.pulledCount} 条 ${dens.pulledChars} 字`);
 } else if (dens.verdict === '过高') {
-  push(10, 'error', `单轮拉取 ${dens.totalCount} 条 / ${dens.totalChars} 字（过高）：常驻 ${dens.constCount} 条 ${dens.constChars} 字 + 命中 ${dens.pulledCount} 条 ${dens.pulledChars} 字`);
+  out.push({gate:10,severity:'warning',kind:'density-high',detail:`单轮拉取 ${dens.totalCount} 条 / ${dens.totalChars} 字（过高，基准 5-6 健康）：常驻 ${dens.constCount} 条 ${dens.constChars} 字 + 命中 ${dens.pulledCount} 条 ${dens.pulledChars} 字。能发布，但建议把常驻层或触发字数压回可接受档`});
 } else if (dens.verdict === '可接受') {
-  push(10, 'warning', `单轮拉取 ${dens.totalCount} 条 / ${dens.totalChars} 字（可接受但偏高${dens.totalCount >= FIRST_TURN.countHigh ? `：条数已达 ${dens.totalCount} 条，但字数没超 ${FIRST_TURN.charsHigh}，B 档只警告不拦卡` : ''}）`);
+  out.push({gate:10,severity:'warning',advisory:true,kind:'density-acceptable',detail:`单轮拉取 ${dens.totalCount} 条 / ${dens.totalChars} 字（可接受但偏高${dens.totalCount >= FIRST_TURN.countHigh ? `：条数已达 ${dens.totalCount} 条，但字数没超 ${FIRST_TURN.charsHigh}` : ''}）。属于可选优化，不加也不影响发布`});
 }
 /* ── 预算表（逐字对应工作台 PIPELINE_PLAN / MEAT_PLAN）─────────────── */
 const PLAN = {
@@ -511,30 +571,30 @@ for (const [cat, [target, cap]] of Object.entries(BUDGET)) {
 for (const e of live) {
   const p = e.extensions?.position ?? e.position ?? 'after_char', isCon = e.constant === true || e.extensions?.constant === true;
   const title = e.comment || '(未命名)';
-  if ((p === 'before_char' || p === 'after_char') && !isCon) push(7, 'error', `${title}：position=${p} 但 constant=false；平台规定这两个位置必须常驻，触发条目应放 at_depth`);
-  if (p === 'at_depth' && isCon) push(7, 'error', `${title}：position=at_depth 但 constant=true；平台规定 at_depth 必须 constant=false`);
-  if (!['before_char', 'after_char', 'at_depth'].includes(p)) push(7, 'error', `${title}：position=${p} 非法`);
+  if ((p === 'before_char' || p === 'after_char') && !isCon) add(7, 'error', `${title}：position=${p} 但 constant=false；平台规定这两个位置必须常驻，触发条目应放 at_depth`, e, 'position-not-constant');
+  if (p === 'at_depth' && isCon) add(7, 'error', `${title}：position=at_depth 但 constant=true；平台规定 at_depth 必须 constant=false`, e, 'position-at-depth-constant');
+  if (!['before_char', 'after_char', 'at_depth'].includes(p)) add(7, 'error', `${title}：position=${p} 非法`, e, 'position-invalid');
 }
 
 /* ── 闸8：keys 规范（按用途 2–10 个 2–6 字白话词，至少一个二字键）────────── */
 for (const e of trig) {
-  const keys = e.keys || [], title = e.comment || '(未命名)';
+  const keys = keysOf(e), title = e.comment || '(未命名)';
   const plain = keys.filter((k) => !isToken(k));
   if (!plain.length) continue;
-  if (plain.length < 2 || plain.length > keyPolicy.max) push(8, 'error', `${title}：白话 keys ${plain.length} 个（${plain.join('/')}），规范要求 2–10 个`);
+  if (plain.length < 2 || plain.length > keyPolicy.max) add(8, 'error', `${title}：白话 keys ${plain.length} 个（${plain.join('/')}），规范要求 2–10 个`, e, 'key-count');
   const invalid = plain.filter((k) => /[^\p{L}\p{N}]/u.test(k) || /世界书|系统提示词|输出格式|触发词|关键词|话术心理|欲望演化|多轮累积/.test(k));
-  if (invalid.length) push(8, 'error', `${title}：key 含标点、空白或元术语：${invalid.join('/')}`);
+  if (invalid.length) add(8, 'error', `${title}：key 含标点、空白或元术语：${invalid.join('/')}`, e, 'key-meta');
   const tooLong = plain.filter((k) => k.length < 2 || k.length > 6);
-  if (tooLong.length) push(8, 'error', `${title}：key 长度超 2–6 字：${tooLong.join('/')}`);
-  if (!plain.some((k) => k.length === 2)) push(8, 'error', `${title}：没有任何二字键，玩家随口说的短词打不开它`);
+  if (tooLong.length) add(8, 'error', `${title}：key 长度超 2–6 字：${tooLong.join('/')}`, e, 'key-length');
+  if (!plain.some((k) => k.length === 2)) add(8, 'error', `${title}：没有任何二字键，玩家随口说的短词打不开它`, e, 'no-two-char');
 }
 
 /* ── 闸11：玩法条目字数（700–1300）────────────────────────────────
    8 万字门槛必须靠加条目达成，不能靠拉长单条。 */
 for (const e of live.filter((x) => catOf(x) === 'play')) {
   const n = cjk(e.content), title = e.comment || '(未命名)';
-  if (n < PLAY_MIN) push(11, 'warning', `${title}：${n} 字，低于玩法条目下限 ${PLAY_MIN}`);
-  if (n > PLAY_MAX) push(11, 'error', `${title}：${n} 字，超玩法条目上限 ${PLAY_MAX}；8 万字应靠加条目达成，不要拉长单条`);
+  if (n < PLAY_MIN) add(11, 'warning', `${title}：${n} 字，低于玩法条目下限 ${PLAY_MIN}`, e, 'play-length-short');
+  if (n > PLAY_MAX) add(11, 'error', `${title}：${n} 字，超玩法条目上限 ${PLAY_MAX}；8 万字应靠加条目达成，不要拉长单条`, e, 'play-length-long');
 }
     /* 开场白里的词，只有「加了真会把首轮顶过上限」时才算本批不能用。
        条目已经在首轮里、或加完之后仍在可接受档，就照常列成可直接恢复的入口——
@@ -543,12 +603,12 @@ for (const e of live.filter((x) => catOf(x) === 'play')) {
     for(const e of trig){
       const title=e.comment||e.name||'(未命名)';
       const ctx=!pulledNow.has(title)&&firstTurnOverload(dens,cjk(e.content))?{firstMes}:{};
-      for(const f of keyPolicy.evaluate(e,ctx).issues)out.push({gate:8,severity:f.severity,detail:title+'：'+f.detail});
+      for(const f of keyPolicy.evaluate(e,ctx).issues)add(8,f.severity,title+'：'+f.detail,e,f.code);
     }
     return {results:out,seeded,tokenEntries,totalKeys:owners.size,conChars:dens.constChars,densCount:dens.totalCount,densChars:dens.totalChars};
   }
   function playNoveltyGate(card){
-    const d=card.data||card, entries=(d.character_book||{}).entries||[], out=[];
+    const d=card.data||card, entries=entriesOf(d), out=[];
     const kind=d.extensions&&d.extensions.rp_studio&&d.extensions.rp_studio.cardKind;
     const playCategories=kind==='meat'||kind==='pipeline'?['play']:['play','event','mechanic'];
     const plays=entries.filter(e=>enabled(e)&&e.disable!==true&&e.disabled!==true&&playCategories.includes(e.extensions?.rp_studio?.category));
@@ -606,7 +666,7 @@ for (const e of live.filter((x) => catOf(x) === 'play')) {
     return {results:out,playCount:plays.length,anchorHit,anchorTotal:anchors.length,coverage,resolvedAnchors:resolved};
   }
 
-return {keyPolicy,MIS_TRIGGER,PROBABILITY_MAX,keywordGates,playNoveltyGate,probeDensity,verdictOf,FIRST_TURN,DENSITY_MODE,keyCandidates,repairKeys,firstTurnOverload,anchorTerms,validateAnchorDesign,resolveAnchors,anchorHit:matchesAnchor};
+return {keyPolicy,MIS_TRIGGER,UNIVERSAL_KEYS,BROAD_KEYS,PROBABILITY_MAX,keywordGates,playNoveltyGate,probeDensity,verdictOf,FIRST_TURN,DENSITY_MODE,keyCandidates,repairKeys,mineTerms,firstTurnOverload,anchorTerms,validateAnchorDesign,resolveAnchors,anchorHit:matchesAnchor};
 });
 </script>
 <!-- CYF_QUALITY_RULES_END -->
@@ -1482,11 +1542,11 @@ return {keyPolicy,MIS_TRIGGER,PROBABILITY_MAX,keywordGates,playNoveltyGate,probe
      改版本时只改这一处，然后跑 tools/package.sh 重新打包。
      格式必须严格是 x.y.z——tools/asserts/version.js 用 /^\d+\.\d+\.\d+$/ 校验，
      所以构建戳不能拼在这里，只能放下面的 WORKBENCH_BUILD。 */
-  const WORKBENCH_VERSION='1.3.1';
+  const WORKBENCH_VERSION='1.3.2';
   /* 构建戳：由 tools/sync-site.sh 在同步时自动改写成「日期.sha」，手改这里没有意义。
      它存在的理由就是版本号看不出来的那件事——线上跑的到底是哪一次构建。 */
-  const WORKBENCH_BUILD='2026.10.15.ef1726a';
-  const WORKBENCH_RELEASE={"title":"本地修复不再空转：导入旧工程就能一路修到零错误","notes":["恢复被旧版改坏的历史入口时也守首轮名额：以前「把几十条被改坏的入口一次性全捡回来」会当场把首轮拉取顶超限，方案被自己的复检拒掉，按钮就变成「点了没反应」。现在名额不够的条目只恢复不在开场白里的词，凑不出合格入口的整条原样留给 AI Diff。（76 条原始旧工程：本地修复 22 条错误 → 1 条，全程没碰模型。）","本地修键不再把条目修成半成品：删掉正文残片后如果凑不出合格入口（至少两个键、至少一个二字键），条目就原样交回 AI Diff，不再拿一个残片换两个新错误。","纯中文标题也能切出二字入口（拾光书店 → 拾光／书店）。导入旧工程后点「本地修复结构与入口」，二字键由工作台自己补齐，不必再等模型。","首轮拉取超限时，工作台会先把开场白里的词从本批改动里自动摘掉再复检；摘不掉就直说「首轮拉取从 N 条涨到 M 条、是哪个词、上限多少条多少字」，不再只留一句失去锚点。","体检和预检里的闸号不再显示成「闸?」：能正确写出闸1／闸8／闸10，没有闸号的项标成「体检」，多行长句也压成一行。","本次公告替换 1.3.0 的公告；1.3.0 的关键词、玩法锚点、分批修复与共用规则等改动全部保留。"]};
+  const WORKBENCH_BUILD='2026.10.16.f9e258c';
+  const WORKBENCH_RELEASE={"title":"可做可不做的建议不再拦卡：修好一半也能继续，旧工程照旧修到零错误","notes":["「可做可不做的建议」和「要修的警告」分开了：闸5 泛词兜底、闸10 可接受档这类提示不再把体检面板标黄，不算进「一键修复」，也不会被送进要花钱的模型批次；只剩建议项时面板显示本地体检通过（另有 N 条可选建议），导出按钮照常可用。","修好一半不再被自己的预检拒掉：同一条目、同一条规则分支上的问题，只要没变坏就算过关，可以一轮一轮改，不必一次到位。真正的坏化（丢掉全部二字键、干净条目上出现万能词、冒出新的问题类型）照旧拦下。","闸10 单轮拉取分三档：30 条以上（病态）才是错误；10 条以上且 12500 字以上（过高）是正常警告，照旧进 AI Diff；7 条以上（可接受）只是建议。","拒绝修复时说得清是哪个闸：会写明「闸10 首轮拉取从 9 条增加到 10 条（上限 … 条 / … 字）」，不再只留一句没有锚点的话，也不再出现「闸?」。","从别处导出的卡也扛得住：世界书条目缺 content、keys 写成字符串、entries 不是数组时，规则照常给结论或明确拒绝，不会抛异常。","本次公告替换 1.3.1 的公告；1.3.1 与 1.3.0 的改动全部保留。"]};
   /* 注意：工厂函数里没有 root 这个变量（root 只是外层 IIFE 的参数），必须用 globalThis。 */
   try{globalThis.Zaojing=globalThis.Zaojing||{};globalThis.Zaojing.version=WORKBENCH_VERSION;globalThis.Zaojing.build=WORKBENCH_BUILD;globalThis.Zaojing.releaseNotes=WORKBENCH_RELEASE;}catch(_){ }
   try{
@@ -2245,7 +2305,9 @@ Zaojing.baseline=Zaojing.baseline||{};Zaojing.baseline.archiveBase64="UEsDBAoAAA
   }
 
   function batchPlan(groups){
-    const findings=Object.entries(groups||{}).flatMap(([group,rows])=>(Array.isArray(rows)?rows:[]).filter(f=>['error','warning'].includes(f?.severity)).map(f=>({...f,group:f.group||group})));
+    /* 可选建议（闸5 泛词兜底、闸10 可接受档）既不交给 AI，也不参与「一键修复」计数：
+       它们本来就允许存在，混进批次只会让 AI 去改本来没错的条目。 */
+    const findings=Object.entries(groups||{}).flatMap(([group,rows])=>(Array.isArray(rows)?rows:[]).filter(f=>['error','warning'].includes(f?.severity)&&!f?.advisory).map(f=>({...f,group:f.group||group})));
     return {findings,fixes:collectLocalFixes({findings}),ai:findings.filter(f=>!f.fix?.path)};
   }
   function buildBatchAiFixRequirement(findings){
@@ -3633,7 +3695,7 @@ function keywordGates(card){return Z.qualityRules.keywordGates(card);}
       /* 肉卡也过同一套关键词闸门：万能词/共用 key/死键/署名照旧报红，
          只有「首轮种子」按肉卡调成提醒（见 keywordGates 里的 meat 分支）。 */
       const kg=keywordGates(card), tag=kind==='meat'?'MEAT_GATE_':'PIPELINE_GATE_', label=kind==='meat'?'肉卡关键词闸门':'关键词闸门';
-      for(const g of kg.results)result.runtime.push({group:'runtime',severity:g.severity,code:tag+g.gate,title:label+g.gate+(g.gate?'':'（署名）'),detail:g.detail});
+      for(const g of kg.results)result.runtime.push({group:'runtime',severity:g.severity,code:tag+g.gate,title:label+g.gate+(g.gate?'':'（署名）'),detail:g.detail,entryId:g.entryId,entryTitle:g.entryTitle,kind:g.kind,advisory:g.advisory});
       result.quality.push({group:'quality',severity:'info',code:tag+'SUMMARY',title:label+'质检摘要',detail:'触发 keys '+kg.totalKeys+' 个 · 首轮可激活 '+kg.seeded+' 条 · 令牌条目 '+kg.tokenEntries+' 条 · 常驻 '+kg.conChars+' 字 · 单轮拉取 '+kg.densCount+' 条 / '+kg.densChars+' 字'});
       /* 玩法新：与关键词闸门并列的硬标准，玩法不能是通用清单 */
       const pn=playNoveltyGate(card), nlabel=kind==='meat'?'肉卡玩法新':'流水线玩法新';
@@ -4341,15 +4403,21 @@ keys 用玩家会自然说出的行为词，从该档自己的正文里长出来
  const stop=new Set('本条 玩家 用户 正文 自己 她们 他们 我们 你们 一个 这个 那个 这里 那里 时候 什么 怎么 为什么 已经 只有 还是 就是 不是 不能 可以 不会 没有 不要 不得 需要 必须 只要 如果 因为 所以 然后 但是 不过 一下 一点 一次 起来 下去 过去 过来 看见 听见 听到 知道 看着 说着 说了 时间 问题 事情 感觉 身上 手上 身体 声音 视线 对方 动作 反应 胸部 下体 衣服 裙子 袜子 男人 女人 男性 女性 女主 房东 管理员 平时 日常 走廊 厨房 浴室 场景 触发 情境 规则 资料 设计 私有 展示 模型 系统 请求 选项 世界书'.split(' '));
  const segmenter=new Intl.Segmenter('zh',{granularity:'word'});
  function counts(card){const audit=Z.audit.runAll(card),rows=Object.values(audit).flat();return {audit,error:rows.filter(r=>r.severity==='error').length,warning:rows.filter(r=>r.severity==='warning').length};}
- function issueKey(f){if(f.severity==='warning'&&f.entry)return [f.group,f.code,f.entry.id??f.entry.index].join('\0');if(f.progress?.rule)return [f.group,f.code,f.progress.rule].join('\0');const detail=String(f.detail||'').split('。历史自然入口：')[0],key=detail.match(/key「([^」]+)」|关键词[“「]([^”」]+)[”」]/);if(key)return [f.group,f.code,key[1]||key[2]].join('\0');if(/单轮拉取/.test(detail))return f.group+'\0'+f.code+'\0density';const budget=detail.match(/^(常驻层|类目 \S+)/);return [f.group,f.code,budget?.[1]||f.title,detail.replace(/\d+(?:\.\d+)?/g,'#')].join('\0');}
+ /* 问题身份 = 分组 + 规则 + 条目 + 子问题种类。
+    以前只有警告带条目身份，错误靠正则从说明文字里抠「key「X」」：AI 只修好一半
+    （少删一个词、说明文字一变）就换了身份，被判成新错误，整批 Diff 被自己拒掉。
+    现在只要发现带着条目，就用条目认它——说明文字怎么写都不影响身份。
+    条目级以外的发现（单轮拉取、常驻/类目预算、玩法覆盖）仍旧各用各的稳定落点。 */
+ function issueKey(f){const g=f.group??'',c=f.code??'',e=f.entry,eid=f.entryId??e?.id??e?.index??null,kind=f.kind??'';if(eid!=null&&eid!=='')return [g,c,eid,kind].join('\0');if(f.progress?.rule)return [g,c,f.progress.rule].join('\0');const detail=String(f.detail||'').split('。历史自然入口：')[0];if(/单轮拉取/.test(detail))return [g,c,'density'].join('\0');const budget=detail.match(/^(常驻层|类目 \S+)/);if(budget)return [g,c,budget[1]].join('\0');const key=detail.match(/key「([^」]+)」|关键词[“「]([^”」]+)[”」]/);if(key)return [g,c,'key',key[1]||key[2]].join('\0');return [g,c,f.title,detail.replace(/\d+(?:\.\d+)?/g,'#')].join('\0');}
  function assess(before,after,{preserveExact=false}={}){
   const a=counts(before),b=counts(after),old=new Set(Object.values(a.audit).flat().filter(f=>f.severity==='error').map(issueKey));
   const introduced=Object.values(b.audit).flat().filter(f=>f.severity==='error'&&!old.has(issueKey(f)));
-  const priorWarnings=new Set(Object.values(a.audit).flat().filter(f=>f.severity==='warning').map(issueKey)),newWarnings=Object.values(b.audit).flat().filter(f=>f.severity==='warning'&&!priorWarnings.has(issueKey(f)));
+  /* 可选建议（advisory）是「允许存在」的，出现或消失都不该算新增/回退，否则改一条泛词兜底就会把 Diff 拦下来。 */
+  const priorWarnings=new Set(Object.values(a.audit).flat().filter(f=>f.severity==='warning'&&!f.advisory).map(issueKey)),newWarnings=Object.values(b.audit).flat().filter(f=>f.severity==='warning'&&!f.advisory&&!priorWarnings.has(issueKey(f)));
   const oldEntries=(before.data||before).character_book?.entries||[],nextEntries=(after.data||after).character_book?.entries||[];
   const changed=oldEntries.filter(e=>{const n=nextEntries.find(n=>n.id===e.id);return !n||JSON.stringify(e)!==JSON.stringify(n);}),warningAllowance=Math.max(1,changed.length);
   const criticalWarning=f=>/DEAD|MIS_TRIGGER|DUPLICATE|OVERLAP|EMPTY.*KEY|(?:MEAT|PIPELINE)_GATE_(?:1|3|8|9)$/.test(f.code||'')||/死键|误触|重复|重合|模板化/.test(f.detail||'');
-  const introducedWarnings=newWarnings.filter(criticalWarning),allowedWarnings=newWarnings.filter(f=>!criticalWarning(f)),warningRegression=b.warning-a.warning>warningAllowance;
+  const introducedWarnings=newWarnings.filter(criticalWarning),allowedWarnings=newWarnings.filter(f=>!criticalWarning(f)),warningRegression=(()=>{const wc=g=>Object.values(g).flat().filter(f=>f.severity==='warning'&&!f.advisory).length;return wc(b.audit)-wc(a.audit)>warningAllowance;})();
   const lost=oldEntries.filter(e=>{
    if(!live(e)||!String(e.content||'').trim())return false;
    const pieces=e.id?nextEntries.filter(n=>live(n)&&n.extensions?.rp_studio?.splitSource?.id===e.id).sort((a,b)=>a.extensions.rp_studio.splitSource.index-b.extensions.rp_studio.splitSource.index):[];
@@ -4492,15 +4560,18 @@ keys 用玩家会自然说出的行为词，从该档自己的正文里长出来
   }
   const names=Z.keyPolicy.characterNames(card),primary=now.find(e=>live(e)&&category(e)==='profile');if(primary){for(const name of names){if(!now.some(e=>(e.keys||[]).includes(name))&&primary.keys.length<10){primary.keys.push(name);primary.extensions=primary.extensions||{};primary.extensions.rp_studio=primary.extensions.rp_studio||{};primary.extensions.rp_studio.primaryCharacterIndex=true;report.push({type:'primary-character-key',id:primary.id,key:name});}}}
   const occupied=new Set(now.filter(live).flatMap(e=>e.keys||[]));
+  /* 第四档补词来源：作者写在正文引号里的说法（「轻点」「晚上想吃什么」）。
+     判据完全通用（见 lib 的 mineTerms），没有卡专有词表。 */
+  const minedTerms=Z.keyPolicy.mineTerms(card);
   const coreBroad=new Set(['去了','到了','不行了','做完','结束','身体','想要','忍不住','发现','怀疑','看到了','比较','不同','区别','差别','一样','不像','和她','公寓','开门','钥匙','中午','午休','碰见','碰到','偶遇','下雨','屁股']);
   for(const e of now.filter(e=>live(e)&&!constant(e))){if((e.keys||[]).some(k=>F.isGenericKey(k)||coreBroad.has(k))&&!(e.useProbability===true&&e.probability<=60)){report.push({type:'probability-gating',id:e.id,from:e.probability,to:60});e.useProbability=true;e.probability=60;if(e.extensions){if(Object.hasOwn(e.extensions,'probability'))e.extensions.probability=60;if(Object.hasOwn(e.extensions,'useProbability'))e.extensions.useProbability=true;}}}
 
-  for(const e of now.filter(e=>live(e)&&!constant(e))){const keys=Z.keyPolicy.supplement(e,occupied,{avoid:budgetFullFor(e),avoidText:firstMes});if(JSON.stringify(keys)!==JSON.stringify(e.keys)){report.push({type:'supplement-keys',id:e.id,before:e.keys,after:keys});e.keys=keys;}}
+  for(const e of now.filter(e=>live(e)&&!constant(e))){const keys=Z.keyPolicy.supplement(e,occupied,{avoid:budgetFullFor(e),avoidText:firstMes,terms:minedTerms});if(JSON.stringify(keys)!==JSON.stringify(e.keys)){report.push({type:'supplement-keys',id:e.id,before:e.keys,after:keys});e.keys=keys;}}
   /* 碎片键就地修掉：删掉碎片，再从「历史自然入口 / 标题 / 标题切分词 / 同义词表」补合格词。
      补不进合格词的条目原样留着，KEY_FRAGMENT 错误继续报出来交给 AI Diff——
      绝不把碎片键当成「已经修好」悄悄放回去，那正是上一版把死结甩给 AI 的根源。 */
   for(const e of now.filter(x=>live(x)&&!constant(x)&&(x.keys||[]).some(k=>Z.keyPolicy.isFragment(k,x.comment||'')))){
-   const before=clone(e.keys||[]),budgetFull=budgetFullFor(e),next=Z.keyPolicy.repair(e,{occupied,firstMes,budgetFull});
+   const before=clone(e.keys||[]),budgetFull=budgetFullFor(e),next=Z.keyPolicy.repair(e,{occupied,firstMes,budgetFull,terms:minedTerms});
    if(JSON.stringify(next)===JSON.stringify(before)){report.push({type:'fragment-keys-need-ai',id:e.id,keys:before,budgetFull});continue;}
    report.push({type:'repair-fragment-keys',id:e.id,before,after:next,budgetFull});
    e.keys=next;for(const k of next)occupied.add(k);
@@ -5343,7 +5414,7 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
    for(const p of check.progressRegressions||[]){
     if(p.rule==='first-turn-density'){
      const hits=(p.newHits||[]).map(h=>h.entry+'←'+h.keys.join('、')).join('；'),T=Z.qualityRules.FIRST_TURN;
-     reasons.push('首轮拉取从 '+p.before+' 条增加到 '+p.after+' 条（'+p.beforeChars+' 字 → '+p.afterChars+' 字，上限 '+T.countHigh+' 条 / '+T.charsHigh+' 字），新增命中：'+(hits||'（未能定位到具体键）')+'；这些词出现在开场白里，加进去会让首轮多注入这些条目');
+     reasons.push('闸10 首轮拉取从 '+p.before+' 条增加到 '+p.after+' 条（'+p.beforeChars+' 字 → '+p.afterChars+' 字，上限 '+T.countHigh+' 条 / '+T.charsHigh+' 字），新增命中：'+(hits||'（未能定位到具体键）')+'；这些词出现在开场白里，加进去会让首轮多注入这些条目');
     }else if(p.rule==='play-anchor-coverage'){
      reasons.push((p.label||'玩法锚点覆盖')+'退步：这些条目丢了玩法锚点——'+((p.lostIds||[]).join('、')||'（未记录 id）')+(p.before!=null?'（覆盖 '+p.before+' → '+(p.after??'?')+'/'+p.total+'）':''));
     }else reasons.push((p.label||p.rule)+'退步');
@@ -5373,12 +5444,13 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
     }catch(error){toast('同类修复失败：'+error.message);}finally{if(button.isConnected){button.disabled=false;button.textContent=oldLabel;}}
   }
   async function finishVerifiedRepair(card,checked){
-    if(checked.errors||checked.warnings)return false;
+    /* 「修完了」只看错误：警告和可选建议不挡完成，也不再要求用户把它们清零。 */
+    if(checked.errors)return false;
     const m=Z.fullCard.meta(card),measure=Z.fullCard.measure(card);
     if(m.profile!==Z.fullCard.bundle.policy.id||measure.effective<measure.minimum)return true;
     try{
       const validation=await Z.fullCard.localCheck(card,new AbortController().signal);
-      delete m.lastGenerationError;delete m.repairUiCheck;Object.assign(m,{localValidation:validation,phase:'本地体检和界面检查已通过，卡片可导出'});
+      delete m.lastGenerationError;delete m.repairUiCheck;Object.assign(m,{localValidation:validation,phase:'本地体检和界面检查已通过，卡片可导出'+(checked.warnings?`（另有 ${checked.warnings} 条建议项，不拦导出）`:'')});
       Z.workspace.saveCard(ws,card,'修复后全部检查通过');await Z.workspace.persist(ws);renderWorkspace();Z.fullCard.feedback.checkpoint(card);Z.fullCard.feedback.finish('complete');return true;
     }catch(error){m.repairUiCheck={status:'fail',reason:error.message,signature:Z.verifiedRepair.uiSignature(card)};m.lastGenerationError='本地界面校验未通过：'+error.message;Z.workspace.saveCard(ws,card,'保留界面检查问题');await Z.workspace.persist(ws);Z.fullCard.feedback.finish('failed',m.lastGenerationError);renderAudit();throw Error(m.lastGenerationError);}
   }
@@ -5397,7 +5469,7 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
         if(!await saveSnapshot('体检格式修复前',current))throw Error('无法保存修复前快照，请先导出备份');
         if(ws!==origin)return;const next=Z.patch.applyPatch(current,Z.patch.createPatch(current,plan.fixes));const guard=Z.verifiedRepair.assess(current,next);if(!guard.acceptable||!guard.improved)throw Error(repairRejection(guard));Z.workspace.saveCard(ws,next,'体检格式修复');await Z.workspace.persist(ws);renderWorkspace();current=collectForm();plan=Z.auditFix.batchPlan(Z.auditFix.decorateFindings(current,Z.audit.runAll(current)));
       }
-      if(ws!==origin)return;lastAuditAt=new Date();let checked=renderAudit();if(!checked.errors&&!checked.warnings){await finishVerifiedRepair(current,checked);checked=renderAudit();}
+      if(ws!==origin)return;lastAuditAt=new Date();let checked=renderAudit();if(!checked.errors){await finishVerifiedRepair(current,checked);checked=renderAudit();}
       toast('实际复检：'+before.error+' 项错误、'+before.warning+' 项建议 → '+checked.errors+' 项错误、'+checked.warnings+' 项建议');
       if(localOnly||!plan.ai.length)return;
       if(!requireApi()){closeDrawers();return;}
@@ -5407,7 +5479,7 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
   }
 
   function renderAuditFinding(finding,index){const action=Z.auditFix.classifyFinding(finding),actionHtml=finding.severity==='info'?'':`<button type="button" class="secondary audit-fix-action" data-audit-fix="${index}" data-audit-mode="${action.mode}">${action.label}</button>`;return`<article class="finding ${finding.severity}"><span class="severity">${finding.severity==='error'?'需修复':finding.severity==='warning'?'建议检查':'提示'}</span><div class="finding-copy"><h2>${esc(finding.title)}</h2><p>${esc(finding.detail)}</p></div>${actionHtml}</article>`}
-  function renderAudit(snapshot){const current=collectForm(),rawAll=snapshot||Z.audit.runAll(current),all=Z.auditFix.decorateFindings(current,rawAll),repairPlan=Z.auditFix.batchPlan(all),localFixes=repairPlan.fixes,groups={runtime:'运行审核',quality:'质量审核',submission:'提交审核（过审规则）'},rows=Object.values(all).flat(),errors=rows.filter(x=>x.severity==='error').length,warnings=rows.filter(x=>x.severity==='warning').length,infos=rows.filter(x=>x.severity==='info').length,total=rows.length,entryCount=current.data?.character_book?.entries?.length||0;$$('[data-audit-tab]').forEach(x=>{const group=x.dataset.auditTab,count=all[group]?.length||0;x.classList.toggle('is-active',group===activeAuditTab);x.innerHTML=`${groups[group]} <span class="audit-count">${count?Z.auditGroups.group(all[group]).length+" 类 · "+count+" 处":"0"}</span>`});const summary=$('#audit-summary');if(summary)summary.innerHTML=`<section class="audit-summary-main" data-audit-verdict="${errors?'error':warnings?'warning':'pass'}"><h2>${lastAuditAt?(errors?'体检未通过':warnings?'体检仍有建议项':'本地体检通过'):'规则预检已加载'}</h2><p>${lastAuditAt?'执行时间：'+lastAuditAt.toLocaleTimeString('zh-CN',{hour12:false}):'点击“重新体检”会保存当前编辑并立即重新运行全部规则。'} · 当前编辑卡 ${entryCount} 条世界书 · 常驻 ${Z.qualityRules.probeDensity(current).constCount} 条</p><p class="fine" data-reference-audit>使用过审助手 V1.6 原版内核 ${Z.referenceAudit.version}；令牌和概率按已核实的运行时规则兼容复核，差异逐项列明。卡型字数与关键词闸门同时检查。</p><button type="button" class="primary audit-fix-all" data-audit-fix-all ${repairPlan.findings.length?'':'disabled'}>${repairPlan.ai.length?`按体检修复（${repairPlan.findings.length}）`:(localFixes.length?`一键修复格式（${localFixes.length}）`:'暂无待修复项')}</button><button type="button" class="secondary" data-action="repair-local-only">本地修复结构与入口（不请求 AI）</button><p class="fine" data-audit-repair-note>${repairPlan.ai.length?`先保存快照并尝试本地结构修复；剩余问题分小批交给 AI，预检通过后审阅应用，每批实际复检。`:(localFixes.length?'直接修复格式字段，修改前自动保存快照。':'当前只有说明或未发现待修复问题。')}</p>${!errors&&!warnings?'<button type="button" class="secondary" data-action="export-json">导出已体检的 JSON 卡片</button>':''}</section><div class="audit-summary-stat ${errors?'has-error':''}"><b>${errors}</b><span>需修复</span></div><div class="audit-summary-stat ${warnings?'has-warning':''}"><b>${warnings}</b><span>建议检查</span></div><div class="audit-summary-stat"><b>${infos}</b><span>提示</span></div>`;const list=all[activeAuditTab]||[];$('#audit-results').innerHTML=list.length?Z.auditGroups.render(list):`<div class="empty"><h2>${total?'本分类未发现问题':'本次体检未发现已覆盖问题'}</h2><p>${total?'其他审核分类仍有 '+total+' 项，请查看上方带数字的标签。':'全部本地规则已经实际执行；这仍不是目标平台的绝对过审证明。'}</p></div>`;return{all,total,errors,warnings,infos,localFixes}}
+  function renderAudit(snapshot){const current=collectForm(),rawAll=snapshot||Z.audit.runAll(current),all=Z.auditFix.decorateFindings(current,rawAll),repairPlan=Z.auditFix.batchPlan(all),localFixes=repairPlan.fixes,groups={runtime:'运行审核',quality:'质量审核',submission:'提交审核（过审规则）'},rows=Object.values(all).flat(),errors=rows.filter(x=>x.severity==='error').length,warnings=rows.filter(x=>x.severity==='warning'&&!x.advisory).length,advisories=rows.filter(x=>x.severity==='warning'&&x.advisory).length,infos=rows.filter(x=>x.severity==='info').length,total=rows.length,entryCount=current.data?.character_book?.entries?.length||0;$$('[data-audit-tab]').forEach(x=>{const group=x.dataset.auditTab,count=all[group]?.length||0;x.classList.toggle('is-active',group===activeAuditTab);x.innerHTML=`${groups[group]} <span class="audit-count">${count?Z.auditGroups.group(all[group]).length+" 类 · "+count+" 处":"0"}</span>`});const summary=$('#audit-summary');if(summary)summary.innerHTML=`<section class="audit-summary-main" data-audit-verdict="${errors?'error':warnings?'warning':'pass'}"><h2>${lastAuditAt?(errors?'体检未通过：还有需修复项':advisories?'本地体检通过（另有 '+advisories+' 条可选建议）':warnings?'可以发布：仍有建议检查项':'本地体检通过'):'规则预检已加载'}</h2><p>${lastAuditAt?'执行时间：'+lastAuditAt.toLocaleTimeString('zh-CN',{hour12:false}):'点击“重新体检”会保存当前编辑并立即重新运行全部规则。'} · 当前编辑卡 ${entryCount} 条世界书 · 常驻 ${Z.qualityRules.probeDensity(current).constCount} 条</p><p class="fine" data-reference-audit>使用过审助手 V1.6 原版内核 ${Z.referenceAudit.version}；令牌和概率按已核实的运行时规则兼容复核，差异逐项列明。卡型字数与关键词闸门同时检查。</p><button type="button" class="primary audit-fix-all" data-audit-fix-all ${repairPlan.findings.length?'':'disabled'}>${repairPlan.ai.length?`按体检修复（${repairPlan.findings.length}）`:(localFixes.length?`一键修复格式（${localFixes.length}）`:'暂无待修复项')}</button><button type="button" class="secondary" data-action="repair-local-only">本地修复结构与入口（不请求 AI）</button><p class="fine" data-audit-repair-note>${repairPlan.ai.length?`先保存快照并尝试本地结构修复；剩余问题分小批交给 AI，预检通过后审阅应用，每批实际复检。`:(localFixes.length?'直接修复格式字段，修改前自动保存快照。':'当前只有说明或未发现待修复问题。')}</p>${!errors?'<button type="button" class="secondary" data-action="export-json">导出已体检的 JSON 卡片</button>':''}</section><div class="audit-summary-stat ${errors?'has-error':''}"><b>${errors}</b><span>需修复</span></div><div class="audit-summary-stat ${warnings?'has-warning':''}"><b>${warnings}</b><span>建议检查</span></div><div class="audit-summary-stat"><b>${advisories}</b><span>可选建议</span></div><div class="audit-summary-stat"><b>${infos}</b><span>提示</span></div>`;const list=all[activeAuditTab]||[];$('#audit-results').innerHTML=list.length?Z.auditGroups.render(list):`<div class="empty"><h2>${total?'本分类未发现问题':'本次体检未发现已覆盖问题'}</h2><p>${total?'其他审核分类仍有 '+total+' 项，请查看上方带数字的标签。':'全部本地规则已经实际执行；这仍不是目标平台的绝对过审证明。'}</p></div>`;return{all,total,errors,warnings,advisories,infos,localFixes}}
   function runAuditNow(){const raw=collectForm();Z.workspace.saveCard(ws,raw,'体检前保存');Z.workspace.persist(ws);lastAuditAt=new Date();const checks=Z.audit.runAll(raw);activeAuditTab=['submission','runtime','quality'].find(group=>checks[group]?.some(f=>f.severity==='error'))||'submission';const result=renderAudit(checks);Z.fullCard.feedback.refreshProgressFromCard?.(raw,checks);navigate('audit');toast(result.total?`体检完成：${result.errors} 项需修复，${result.warnings} 项建议检查`:'体检完成：已覆盖规则中未发现问题')}
   function setupModelSelect(){const old=$('#api-model');if(!old)return;const select=document.createElement('select');select.id='api-model-select';select.disabled=true;select.innerHTML='<option value="">请先读取模型</option>';old.replaceWith(select);$('[data-action="test-api"]').textContent='读取模型'}
   function syncModelControls(ids=Z.modelControl.readCache(localStorage),selected=settings().model){const cached=Z.modelControl.normalizeModels(ids),models=Z.modelControl.normalizeModels([...cached,selected]),active=models.includes(selected)?selected:(models[0]||'');$$('[data-model-scope],#api-model-select').forEach(select=>{select.innerHTML=models.map(id=>`<option value="${esc(id)}">${esc(id)}</option>`).join('')||'<option value="">请先读取模型</option>';select.disabled=!models.length;select.value=active});$$('.model-read-shortcut').forEach(button=>button.hidden=Boolean(cached.length));return active}
