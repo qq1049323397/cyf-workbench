@@ -258,7 +258,868 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <section class="view" data-view="audit"><div class="section-head"><div><h1>质量控制台</h1><p>运行、体验与提交规则并行检查；每个问题都指向具体字段与修复动作。</p></div><button class="primary" data-action="audit">重新体检</button></div><div id="audit-summary" class="audit-summary" aria-live="polite"></div><div class="audit-tabs"><button class="is-active" data-audit-tab="runtime">运行审核</button><button data-audit-tab="quality">质量审核</button><button data-audit-tab="submission">提交审核（过审规则）</button></div><div id="audit-results"></div></section>
 <section class="view" data-view="publish"><div class="section-head"><div><h1>发布与保护</h1><p>导出标准 JSON/PNG；保护是可追溯的软锁，不承诺不可破解。</p></div></div><div class="publish-grid"><section><h2>导出卡片文件</h2><p>普通导出使用标准角色卡格式；加入防盗后，PNG 使用 1.6 的 RP-Hub 兼容软锁并写入封面水印。</p><div class="stack"><button class="primary" data-action="export-json">导出 JSON（草稿可用）</button><button class="secondary" data-action="export-png">导出 PNG</button></div></section><section><h2>署名与溯源</h2><label>作者署名<input id="author-input" placeholder="你的名字或工作室"></label><p class="fine">写入作者、时间和声明，用于辨识与溯源。技术上仍可被移除。</p><button class="secondary" data-action="sign">写入署名</button> <button class="primary" data-action="protect-card">加入防盗</button><label style="margin-top:16px">防盗码（留空自动生成）<input id="rp-protection-code" placeholder="自动生成，或填写 6–12 位字母数字"></label><p id="rp-protection-status" class="fine" role="status">尚未加入防盗</p><p class="fine">直接为当前卡加入 1.6 防盗，导出 PNG 时写入封面水印与 RP-Hub 兼容软锁。作者注释只保留 TAG。</p></section></div></section>
 <section class="view" data-view="settings"><div class="section-head"><div><h1>源码与工作区</h1><p>模型负责生成，源码负责判断如何实现，工作区负责提供已有素材。</p></div></div><div class="settings-grid"><section><h2>模型 API</h2><label>接口地址<input id="api-base" value="https://cdn.sta1n.cn/v1"></label><label>API Key<input id="api-key" type="password" autocomplete="off" placeholder="sk-..."></label><label>模型<input id="api-model" placeholder="例如 gpt-4.1-mini"></label><div class="stack"><button class="primary" data-action="test-api">测试连接</button><button class="secondary" data-action="save-settings">保存设置</button></div><p class="fine">使用第三方接口前，请自行确认其隐私政策与费用。</p></section><section><h2>RP-Hub 源码优先引擎</h2><p id="source-detail">正在加载内置 RP-Hub 源码索引。</p><p id="source-index-stats" class="source-index-stats"></p><div class="stack"><button class="secondary" data-action="choose-source">选择新版源码文件夹</button><button class="text-button" data-action="reset-source">恢复内置 1.8.9 源码</button></div><p class="fine">源码是 AI 判断字段、运行时、导入导出和 BUG 的最高优先级依据。所选源码只在本机分块检索，每次仅发送与当前任务相关的片段。</p><input id="source-file" type="file" accept=".js,.html,.css,.json,.md,.txt" hidden></section></div></section>
-</main></div></div><div id="toast-root" class="toast-root" aria-live="polite"></div><script>(function (root, factory) {
+</main></div></div><div id="toast-root" class="toast-root" aria-live="polite"></div><!-- RPHUB_AUDIT_CORE_START: reference V1.6, core 2.5.0, sha256 d92573bb2beeaead071f4281b1f4db3712b7fa6bc89972c5f6aa24545321e23a -->
+<script id="rphub-audit-core">
+(function (root, factory) {
+  "use strict";
+  var api = factory();
+  if (typeof module === "object" && module.exports) module.exports = api;
+  if (root) root.RPHubAuditCore = api;
+})(typeof globalThis !== "undefined" ? globalThis : this, function () {
+  "use strict";
+
+  var VERSION = "2.5.0";
+  var MIN_WORLDBOOK_CHARS = 15000;
+  var SUPPORT_ENTRY_RE = /^(?:文风|格式|样式|正则|UI|图片|生图|音乐|归档)|文风|写作|描写|输出协议|变量(?:定义|协议|说明|托管)|锚点库|纠偏|短例|自动生图/i;
+  var CORE_INSTRUCTION_RE = /必须|禁止|不得|严禁|核心|铁律|始终|每轮/;
+  var META_KEY_RE = /文风|写作|风格|描写|铁律|反差|对话|口吻|淫语|人设|纠偏|旁白|身份回钩|释放收束|菜单纠偏|欲望客体|第一眼|五镜头|写具体|细写|靠近过程|变量列表|当前变量|变量值|输出格式|UpdateVariable|stat_data|变量更新|状态面板|当前状态|数值|^set$/i;
+  var POSITION_ALIASES = {
+    "0": "before_char", "1": "after_char", "2": "author_note_top", "3": "author_note_bottom",
+    "4": "at_depth", "5": "example_messages_top", "6": "example_messages_bottom", "7": "outlet",
+    "before": "before_char", "after": "after_char", "antop": "author_note_top", "anbottom": "author_note_bottom",
+    "atdepth": "at_depth", "emtop": "example_messages_top", "embottom": "example_messages_bottom"
+  };
+  var POSITIONS = new Set([
+    "system_top", "global_note", "before_char", "after_char",
+    "user_top", "assistant_top", "at_depth", "author_note_top", "author_note_bottom",
+    "example_messages_top", "example_messages_bottom", "outlet"
+  ]);
+  var BROAD_KEYS = new Set([
+    "人", "事", "看", "去", "我", "你", "他", "她", "它", "打",
+    "系统", "世界", "事件", "任务", "地点", "角色", "人物", "状态",
+    "消息", "继续", "现在", "情况", "剧情", "设定", "场景", "规则"
+  ]);
+  var HIGH_FALSE_TRIGGER_KEYS = new Set([
+    "去了", "到了", "不行了", "做完", "结束", "身体", "想要", "忍不住",
+    "发现", "怀疑", "看到了", "比较", "不同", "区别", "差别", "一样", "不像",
+    "和她", "公寓", "开门", "钥匙", "中午", "午休", "碰见", "碰到", "偶遇",
+    "下雨", "屁股"
+  ]);
+  var FALSE_TRIGGER_EXAMPLES = {
+    "去了": "我去了公司", "到了": "我到了", "不行了": "我今天不行了",
+    "做完": "作业做完了", "结束": "这件事结束了", "身体": "我身体不舒服",
+    "想要": "我想要喝水", "忍不住": "我忍不住笑了", "发现": "我发现钥匙不见了",
+    "怀疑": "我怀疑价格算错了", "看到了": "她看到了路牌", "比较": "我想比较一下价格",
+    "不同": "这两件衣服不同", "区别": "它们有什么区别", "差别": "价格差别不大",
+    "一样": "看起来都一样", "不像": "今天不像会下雨", "和她": "我和她去便利店",
+    "公寓": "我去杏奈公寓", "开门": "我开门看看", "钥匙": "钥匙不见了",
+    "中午": "中午去吃饭", "午休": "午休时散步", "碰见": "刚才碰见同事",
+    "碰到": "路上碰到熟人", "偶遇": "我偶遇了同学", "下雨": "今天下雨",
+    "屁股": "她拍了拍屁股"
+  };
+  var STAGE_ENTRY_RE = /暗线|渗透|明线|守候|觉醒|崩溃|追夫|反击|阶段|状态机|跃迁|门控|总控/;
+  var STAGE_LABEL_KEY_RE = /暗线|渗透|明线|守候|觉醒|崩溃|追夫|反击|阶段|安全期|危险期|高危|暴露期/;
+  var STAGE_NATURAL_PROBES = ["撞见了", "已经知道了", "决定不分手", "开始反击", "她们见面了", "当面对质", "我选择了她"];
+  var SPOILER_RE = /结局|真凶|凶手|幕后|隐藏身份|最终真相|反转/;
+
+  function firstDefined() {
+    for (var i = 0; i < arguments.length; i++) {
+      if (arguments[i] !== undefined) return arguments[i];
+    }
+    return undefined;
+  }
+
+  function normalizePosition(value) {
+    if (value === undefined || value === null || value === "") return "";
+    var text = String(value).trim();
+    return POSITION_ALIASES[text.toLowerCase()] || text;
+  }
+
+  function estimateTokens(value) {
+    var text = typeof value === "number" ? "x".repeat(Math.max(0, value)) : String(value || "");
+    if (!text) return 0;
+    var cjk = (text.match(/[\u3400-\u9fff\uf900-\ufaff]/g) || []).length;
+    var latin = (text.match(/[A-Za-z0-9_]+/g) || []).join("").length;
+    var punct = (text.match(/[^\sA-Za-z0-9_\u3400-\u9fff\uf900-\ufaff]/g) || []).length;
+    var spaces = (text.match(/\s+/g) || []).length;
+    return Math.ceil(cjk * 1.05 + latin / 4 + punct * 0.45 + spaces * 0.15);
+  }
+
+  function escapeRegex(value) {
+    return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function literalKeyEffectiveLength(value) {
+    return (String(value || "").match(/[\u3400-\u9fff\uf900-\ufaffA-Za-z0-9]/g) || []).length;
+  }
+
+  function pushProducerEvidence(map, key, type, source, detail) {
+    key = String(key || "").trim();
+    if (!key) return;
+    var rank = { player_input: 0, uncertain: 1, state_auto: 2, ui_auto: 3 };
+    var current = map[key];
+    if (!current || rank[type] > rank[current.type]) {
+      map[key] = { type: type, source: source, detail: detail };
+    }
+  }
+
+  function quotedStrings(text) {
+    var values = [];
+    String(text || "").replace(/(["'`])((?:\\.|(?!\1)[\s\S])*?)\1/g, function (_, quote, value) {
+      values.push(value.replace(/\\n/g, "\n").replace(/\\(["'`\\])/g, "$1"));
+      return _;
+    });
+    return values;
+  }
+
+  function functionBody(source, name) {
+    var marker = new RegExp("function\\s+" + escapeRegex(name) + "\\s*\\([^)]*\\)\\s*\\{", "m").exec(source);
+    if (!marker) return "";
+    var start = marker.index + marker[0].length;
+    var depth = 1;
+    var quote = "";
+    var escaped = false;
+    for (var i = start; i < source.length; i++) {
+      var ch = source[i];
+      if (quote) {
+        if (escaped) escaped = false;
+        else if (ch === "\\") escaped = true;
+        else if (ch === quote) quote = "";
+        continue;
+      }
+      if (ch === "'" || ch === '"' || ch === "`") { quote = ch; continue; }
+      if (ch === "{") depth++;
+      else if (ch === "}" && --depth === 0) return source.slice(start, i);
+    }
+    return source.slice(start);
+  }
+
+  function collectUiProducerText(replacement) {
+    var html = String(replacement || "");
+    var scripts = [];
+    html.replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gi, function (_, source) {
+      scripts.push(source);
+      return _;
+    });
+    if (!scripts.length && /triggerSlash|sendMessage|sendChat|executeSlash/i.test(html)) scripts.push(html);
+    var confirmed = [];
+    scripts.forEach(function (source) {
+      if (!/(?:triggerSlash|sendMessage|sendChat|executeSlashCommands?)\s*\(/i.test(source)) return;
+
+      source.replace(/(?:triggerSlash|sendMessage|sendChat|executeSlashCommands?)\s*\(\s*(["'`])((?:\\.|(?!\1)[\s\S])*?)\1\s*\)/gi, function (_, quote, value) {
+        confirmed.push(value);
+        return _;
+      });
+
+      var builderNames = [];
+      source.replace(/(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*([A-Za-z_$][\w$]*)\s*\([^;]*\)\s*;/g, function (_, name) {
+        if (builderNames.indexOf(name) < 0) builderNames.push(name);
+        return _;
+      });
+      ["buildProfile", "buildPayload", "buildMessage", "createPayload", "createMessage"].forEach(function (name) {
+        if (source.indexOf(name + "(") >= 0 && builderNames.indexOf(name) < 0) builderNames.push(name);
+      });
+
+      builderNames.forEach(function (name) {
+        var body = functionBody(source, name);
+        if (!body || !/\breturn\b/.test(body)) return;
+        confirmed = confirmed.concat(quotedStrings(body));
+
+        var properties = [];
+        body.replace(/\.([A-Za-z_$][\w$]*)/g, function (_, property) {
+          if (properties.indexOf(property) < 0) properties.push(property);
+          return _;
+        });
+        properties.forEach(function (property) {
+          var propRe = new RegExp("(?:[\"']?" + escapeRegex(property) + "[\"']?)\\s*:\\s*([\"'`])((?:\\\\.|(?!\\1)[\\s\\S])*?)\\1", "g");
+          source.replace(propRe, function (_, quote, value) {
+            confirmed.push(value);
+            return _;
+          });
+        });
+
+        body.replace(/\bpick\s*\(\s*(["'])([^"']+)\1\s*\)/g, function (_, quote, field) {
+          var inputRe = new RegExp("<input\\b(?=[^>]*\\bname=[\"']" + escapeRegex(field) + "[\"'])[^>]*\\bvalue=[\"']([^\"']+)[\"'][^>]*>", "gi");
+          html.replace(inputRe, function (tag, value) {
+            confirmed.push(value);
+            return tag;
+          });
+          return _;
+        });
+      });
+    });
+    return confirmed.join("\n");
+  }
+
+  function collectRegexScripts(root, data) {
+    var ext = data.extensions && typeof data.extensions === "object" ? data.extensions : {};
+    var candidates = [
+      data.regex_scripts, data.regexScripts, ext.regex_scripts, ext.regexScripts,
+      root.regex_scripts, root.regexScripts
+    ];
+    var scripts = [];
+    candidates.forEach(function (list) {
+      if (Array.isArray(list)) list.forEach(function (item) {
+        if (item && typeof item === "object") scripts.push(item);
+      });
+    });
+    return scripts;
+  }
+
+  function analyzeKeywordProducers(input) {
+    var root = input && typeof input === "object" ? input : {};
+    var data = root.data && typeof root.data === "object" ? root.data : root;
+    var card = normalizeCard(input);
+    var keys = [];
+    card.entries.forEach(function (entry) {
+      entry.keys.concat(entry.selective ? entry.secondaryKeys : []).forEach(function (key) {
+        if (keys.indexOf(key) < 0) keys.push(key);
+      });
+    });
+    var evidence = {};
+    var uiText = "";
+    collectRegexScripts(root, data).forEach(function (script) {
+      var replacement = firstDefined(script.replaceString, script.replacement, script.replace_string, "");
+      uiText += "\n" + collectUiProducerText(replacement);
+    });
+
+    var promptParts = [
+      data.system_prompt, data.systemPrompt, data.post_history_instructions,
+      root.system_prompt, root.systemPrompt, root.post_history_instructions
+    ];
+    card.entries.forEach(function (entry) {
+      if (entry.enabled && entry.constant) promptParts.push(entry.content);
+    });
+    var contractText = promptParts.filter(Boolean).join("\n");
+
+    keys.forEach(function (key) {
+      if (uiText.indexOf(key) >= 0) {
+        pushProducerEvidence(evidence, key, "ui_auto", "UI/正则发送链", "确认关键词位于发送到聊天的消息构造内容中");
+        return;
+      }
+      var escaped = escapeRegex(key);
+      var mandatoryBefore = new RegExp("(?:每次|每轮|始终|固定)[\\s\\S]{0,100}(?:必须|务必|需)[\\s\\S]{0,100}(?:输出|写入|附加|保留)[\\s\\S]{0,180}" + escaped, "i");
+      var mandatoryAfter = new RegExp(escaped + "[\\s\\S]{0,180}(?:每次|每轮|始终|固定)[\\s\\S]{0,100}(?:必须|务必|需)[\\s\\S]{0,100}(?:输出|写入|附加|保留)", "i");
+      if (mandatoryBefore.test(contractText) || mandatoryAfter.test(contractText)) {
+        pushProducerEvidence(evidence, key, "state_auto", "隐藏状态输出契约", "确认卡内要求每轮原样输出该关键词");
+        return;
+      }
+      var looseState = new RegExp("(?:状态|status|brief|变量)[\\s\\S]{0,100}" + escaped + "|" + escaped + "[\\s\\S]{0,100}(?:状态|status|brief|变量)", "i");
+      if (looseState.test(contractText)) {
+        pushProducerEvidence(evidence, key, "uncertain", "可能的状态路径", "发现状态相关引用，但无法静态证明每轮写入");
+      }
+    });
+    return { byKey: evidence, uiProducerText: uiText };
+  }
+
+  function classifyKeywordProducer(key, analysis) {
+    var hit = analysis && analysis.byKey ? analysis.byKey[String(key || "").trim()] : null;
+    return hit || { type: "player_input", source: "玩家输入", detail: "未发现可证明的卡内自动生产路径" };
+  }
+
+  function decodeUtf8(bytes) {
+    return new TextDecoder("utf-8").decode(bytes);
+  }
+
+  function base64Bytes(text) {
+    var clean = String(text || "").trim();
+    if (typeof Buffer !== "undefined") return Uint8Array.from(Buffer.from(clean, "base64"));
+    var bin = atob(clean);
+    var out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  function parsePayload(payload) {
+    var raw = payload instanceof Uint8Array ? decodeUtf8(payload) : String(payload || "");
+    var candidates = [raw.trim()];
+    if (/^[A-Za-z0-9+/=\s]+$/.test(raw) && raw.replace(/\s/g, "").length >= 8) {
+      try { candidates.unshift(decodeUtf8(base64Bytes(raw.replace(/\s/g, "")))); } catch (_) {}
+    }
+    var errors = [];
+    for (var i = 0; i < candidates.length; i++) {
+      try {
+        var value = JSON.parse(candidates[i].replace(/^\uFEFF/, ""));
+        if (value && typeof value === "object" && !Array.isArray(value)) return value;
+      } catch (err) { errors.push(err.message); }
+    }
+    throw new Error("找到角色卡数据，但无法解码 JSON：" + errors.join(" | "));
+  }
+
+  function readCString(bytes, start) {
+    var end = start;
+    while (end < bytes.length && bytes[end] !== 0) end++;
+    if (end >= bytes.length) throw new Error("PNG 文本块字段未正确结束");
+    return { bytes: bytes.slice(start, end), next: end + 1 };
+  }
+
+  async function inflate(bytes) {
+    if (typeof require === "function") {
+      return Uint8Array.from(require("zlib").inflateSync(Buffer.from(bytes)));
+    }
+    if (typeof DecompressionStream !== "undefined") {
+      var stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate"));
+      return new Uint8Array(await new Response(stream).arrayBuffer());
+    }
+    throw new Error("当前环境不支持解压 PNG 压缩文本块");
+  }
+
+  async function extractPngCardJson(input) {
+    var bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+    var sig = [137, 80, 78, 71, 13, 10, 26, 10];
+    if (bytes.length < 8 || sig.some(function (v, i) { return bytes[i] !== v; })) {
+      throw new Error("不是有效 PNG 文件");
+    }
+    var view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    var offset = 8;
+    var payloads = [];
+    var fallbackPayloads = [];
+    function collectFallback(value) {
+      var text = decodeUtf8(value).trim();
+      if (text.length > 50 && (text.charAt(0) === "{" || text.slice(0, 2) === "ey")) fallbackPayloads.push(value);
+    }
+    while (offset + 12 <= bytes.length) {
+      var length = view.getUint32(offset, false);
+      var typeStart = offset + 4;
+      var dataStart = offset + 8;
+      var dataEnd = dataStart + length;
+      if (dataEnd + 4 > bytes.length) throw new Error("PNG 块长度越界或文件损坏");
+      var type = String.fromCharCode(bytes[typeStart], bytes[typeStart + 1], bytes[typeStart + 2], bytes[typeStart + 3]);
+      var data = bytes.slice(dataStart, dataEnd);
+      try {
+        if (type === "tEXt") {
+          var t = readCString(data, 0);
+          var textKey = decodeUtf8(t.bytes).toLowerCase();
+          var textValue = data.slice(t.next);
+          if (/^(chara|ccv3|character)$/.test(textKey)) payloads.push(textValue);
+          else collectFallback(textValue);
+        } else if (type === "zTXt") {
+          var z = readCString(data, 0);
+          if (data[z.next] !== 0) throw new Error("不支持的 zTXt 压缩方法");
+          var inflated = await inflate(data.slice(z.next + 1));
+          if (/^(chara|ccv3|character)$/.test(decodeUtf8(z.bytes).toLowerCase())) payloads.push(inflated);
+          else collectFallback(inflated);
+        } else if (type === "iTXt") {
+          var k = readCString(data, 0);
+          var compressionFlag = data[k.next];
+          var compressionMethod = data[k.next + 1];
+          var language = readCString(data, k.next + 2);
+          var translated = readCString(data, language.next);
+          var text = data.slice(translated.next);
+          if (compressionFlag === 1) {
+            if (compressionMethod !== 0) throw new Error("不支持的 iTXt 压缩方法");
+            text = await inflate(text);
+          }
+          if (/^(chara|ccv3|character)$/.test(decodeUtf8(k.bytes).toLowerCase())) payloads.push(text);
+          else collectFallback(text);
+        }
+      } catch (_) {
+        // Continue scanning; another valid chara chunk may exist.
+      }
+      offset = dataEnd + 4;
+      if (type === "IEND") break;
+    }
+    if (payloads.length) return parsePayload(payloads[payloads.length - 1]);
+    if (fallbackPayloads.length) return parsePayload(fallbackPayloads[0]);
+    throw new Error("PNG 中没有找到 RP-HUB 可识别的角色卡元数据");
+  }
+
+  function rawKeyList(value) {
+    if (Array.isArray(value)) return value.map(function (item) { return String(item == null ? "" : item); });
+    if (typeof value === "string") return value.split(/[,，、\n]/);
+    return [];
+  }
+
+  function normalizeEntry(entry, index) {
+    entry = entry && typeof entry === "object" && !Array.isArray(entry) ? entry : {};
+    var ext = entry.extensions && typeof entry.extensions === "object" ? entry.extensions : {};
+    var rawKeys = rawKeyList(entry.keys);
+    if (!rawKeys.length && typeof entry.keyInput === "string") rawKeys = rawKeyList(entry.keyInput);
+    var rawSecondary = rawKeyList(firstDefined(
+      entry.secondary_keys, entry.secondaryKeys, entry.keysecondary, entry.keySecondary,
+      entry.keys_secondary, entry.optionalKeys, entry.optional_keys
+    ));
+    var id = firstDefined(entry.uid, entry.id, index);
+    var scanDepth = firstDefined(entry.scanDepth, entry.scan_depth, ext.scanDepth, ext.scan_depth, null);
+    var depth = firstDefined(entry.depth, ext.depth, null);
+    var probability = firstDefined(entry.probability, ext.probability, 100);
+    var useProbability = !!firstDefined(
+      entry.useProbability, entry.use_probability, ext.useProbability, ext.use_probability, false
+    );
+    var useRegex = !!firstDefined(entry.useRegex, entry.use_regex, ext.useRegex, ext.use_regex, false);
+    return {
+      index: index,
+      id: id,
+      title: String(firstDefined(entry.comment, entry.name, entry.title, "条目 " + (index + 1)) || ""),
+      content: String(firstDefined(entry.content, entry.entry, "") || ""),
+      rawKeys: rawKeys,
+      rawSecondaryKeys: rawSecondary,
+      keys: rawKeys.map(function (key) { return key.trim(); }).filter(Boolean),
+      secondaryKeys: rawSecondary.map(function (key) { return key.trim(); }).filter(Boolean),
+      blankKeyCount: rawKeys.filter(function (key) { return !key.trim(); }).length,
+      enabled: entry.enabled !== false && entry.disable !== true,
+      constant: !!entry.constant,
+      selective: !!entry.selective,
+      position: normalizePosition(firstDefined(entry.position, entry.insertion_position, "")),
+      order: firstDefined(entry.order, entry.insertion_order, 100),
+      depth: depth,
+      scanDepth: scanDepth,
+      probability: probability,
+      useProbability: useProbability,
+      useRegex: useRegex,
+      sourcePath: "data.character_book.entries[" + index + "]",
+      raw: entry
+    };
+  }
+
+  function normalizeCard(input) {
+    var root = input && typeof input === "object" ? input : {};
+    var data = root.data && typeof root.data === "object" ? root.data : root;
+    var ext = data.extensions && typeof data.extensions === "object" ? data.extensions : {};
+    var book = firstDefined(data.character_book, data.worldInfo, root.character_book, root.worldInfo, ext.worldInfo, ext.character_book, {});
+    var rawEntries = [];
+    if (Array.isArray(book)) rawEntries = book;
+    else if (book && Array.isArray(book.entries)) rawEntries = book.entries;
+    else if (book && book.entries && typeof book.entries === "object") rawEntries = Object.keys(book.entries).map(function (key) { return book.entries[key]; });
+    else if (book && book.book && Array.isArray(book.book.entries)) rawEntries = book.book.entries;
+    var entries = rawEntries.map(normalizeEntry);
+    var uiTemplates = firstDefined(
+      data.uiTemplates, data.ui_templates,
+      ext.rp_hub_ui_templates, ext.uiTemplates, ext.ui_templates,
+      []
+    );
+    if (!Array.isArray(uiTemplates)) uiTemplates = [];
+    return {
+      raw: root,
+      data: data,
+      name: String(firstDefined(data.name, root.name, "") || ""),
+      firstMes: String(firstDefined(data.first_mes, data.firstMes, root.first_mes, root.firstMes, "") || ""),
+      book: book && typeof book === "object" ? book : {},
+      entries: entries,
+      uiTemplates: uiTemplates,
+      globalScanDepth: firstDefined(book && book.scan_depth, book && book.scanDepth, null),
+      tokenBudget: firstDefined(book && book.token_budget, book && book.tokenBudget, null),
+      recursiveScanning: firstDefined(book && book.recursive_scanning, book && book.recursiveScanning, null)
+    };
+  }
+
+  function add(findings, level, code, entry, evidence, extra) {
+    extra = extra || {};
+    findings.push({
+      level: level,
+      code: code,
+      entry: entry ? { id: entry.id, title: entry.title, index: entry.index } : null,
+      field: extra.field || "",
+      value: extra.value,
+      evidence: evidence,
+      impact: extra.impact || "",
+      suggestion: extra.suggestion || "",
+      confidence: extra.confidence || (level === "must_fix" ? "proven" : "heuristic"),
+      sourcePath: entry ? entry.sourcePath : (extra.sourcePath || "")
+    });
+  }
+
+  function keyMatches(entry, input) {
+    var text = String(input || "");
+    var folded = text.toLocaleLowerCase();
+    function listMatch(keys) {
+      if (entry.useRegex) {
+        return keys.some(function (key) {
+          try { return new RegExp(key, "i").test(text); } catch (_) { return false; }
+        });
+      }
+      return keys.some(function (key) { return folded.includes(key.toLocaleLowerCase()); });
+    }
+    var primary = listMatch(entry.keys);
+    if (entry.selective && entry.secondaryKeys.length) return primary && listMatch(entry.secondaryKeys);
+    return primary;
+  }
+
+  function simulate(entries, probes) {
+    var constants = entries.filter(function (e) { return e.enabled && e.constant; });
+    var conditional = entries.filter(function (e) { return e.enabled && !e.constant && e.scanDepth !== 0; });
+    var constantText = constants.map(function (e) { return e.content; }).join("\n");
+    var constantTokens = estimateTokens(constantText);
+    return (probes || []).map(function (input) {
+      var hits = conditional.filter(function (entry) { return keyMatches(entry, input); });
+      var hitText = hits.map(function (e) { return e.content; }).join("\n");
+      return {
+        input: String(input),
+        constantEntries: constants.map(function (e) { return e.title; }),
+        constantTokens: constantTokens,
+        dynamicEntries: hits.map(function (e) {
+          return {
+            id: e.id,
+            title: e.title,
+            chars: e.content.length,
+            probabilistic: e.useProbability && Number(e.probability) < 100
+          };
+        }),
+        dynamicTokens: estimateTokens(hitText),
+        totalTokens: constantTokens + estimateTokens(hitText)
+      };
+    });
+  }
+
+  function isHistoricalOrGuardedStateMention(text, start, end) {
+    text = String(text || "");
+    var left = text.slice(Math.max(0, start - 110), start);
+    var whole = text.slice(Math.max(0, start - 110), Math.min(text.length, end + 70));
+    var sentenceStart = Math.max(left.lastIndexOf("。"), left.lastIndexOf("！"), left.lastIndexOf("？"), left.lastIndexOf("\n"));
+    var localLeft = left.slice(sentenceStart + 1);
+    if (/(?:Phase[-_ ]?1|阶段一|第一阶段|前史|历史|过去|此前|曾经|当时|原本|旧状态|旧开局|回溯)[^。！？\n]{0,90}$/i.test(localLeft)) return true;
+    if (/(?:仅|只)(?:用于|适用于|作为|属于)[^。！？\n]{0,50}(?:前史|历史|回溯|旧状态|条件分支)/.test(whole)) return true;
+    if (/(?:不得|禁止|避免|防止|不再|不能)[^。！？\n]{0,55}(?:写成|视为|当作|判定为|回滚为|恢复为|退回|套用|使用)?[^。！？\n]{0,35}$/i.test(localLeft)) return true;
+    if (/(?:已失效|不再适用|不是当前|并非当前|仅作说明|仅供回溯)/.test(whole)) return true;
+    return false;
+  }
+
+  function hasCurrentStateConflict(text, regex) {
+    var flags = regex.flags.indexOf("g") >= 0 ? regex.flags : regex.flags + "g";
+    var scan = new RegExp(regex.source, flags);
+    var match;
+    while ((match = scan.exec(String(text || "")))) {
+      if (!isHistoricalOrGuardedStateMention(text, match.index, match.index + match[0].length)) return true;
+      if (!match[0].length) scan.lastIndex++;
+    }
+    return false;
+  }
+
+  function auditCard(input, options) {
+    options = options || {};
+    var card = normalizeCard(input);
+    var producerAnalysis = analyzeKeywordProducers(input);
+    var findings = [];
+    var ids = new Map();
+    var keyOwners = new Map();
+    var constantChars = 0;
+    var enabledChars = 0;
+    var constants = 0;
+    var supportChars = 0;
+
+    card.entries.forEach(function (entry) {
+      if (entry.enabled) enabledChars += entry.content.length;
+      if (entry.enabled && SUPPORT_ENTRY_RE.test(entry.title)) supportChars += entry.content.length;
+      if (entry.enabled && entry.constant) { constants++; constantChars += entry.content.length; }
+      var idKey = typeof entry.id + ":" + String(entry.id);
+      if (entry.id !== undefined && entry.id !== null) {
+        if (!ids.has(idKey)) ids.set(idKey, []);
+        ids.get(idKey).push(entry);
+      }
+      if (entry.enabled && !entry.content.trim()) add(findings, "must_fix", "WB_EMPTY_CONTENT", entry, "这个已启用的条目没有填写正文", { field: "content" });
+      if (entry.blankKeyCount) add(findings, "must_fix", "WB_BLANK_KEY", entry, "关键词列表里有 " + entry.blankKeyCount + " 个空白项", { field: "keys" });
+      if (entry.enabled && !entry.constant && !entry.keys.length) add(findings, "must_fix", "WB_UNREACHABLE_NO_KEY", entry, "这是非常驻条目，却没有能把它叫出来的关键词，因此正常对话无法触发", { field: "keys" });
+      if (entry.enabled && !entry.constant && entry.scanDepth === 0) add(findings, "must_fix", "WB_SCAN_DEPTH_ZERO", entry, "非常驻条目的扫描深度为 0。系统不会回看对话中的关键词，所以这个条目无法正常触发", {
+        field: "scanDepth",
+        value: 0,
+        impact: "条目虽然已启用，但玩家正常聊天时几乎不会加载，里面的设定等于没有生效",
+        suggestion: "把该条目的扫描深度改为大于 0 的合理数值，或删除条目级的 0，让它继承世界书的统一扫描设置"
+      });
+      if (entry.enabled && !entry.constant && SUPPORT_ENTRY_RE.test(entry.title) && CORE_INSTRUCTION_RE.test(entry.content)) {
+        add(findings, "must_fix", "WB_CORE_INSTRUCTION_CONDITIONAL", entry, "这条规则声称必须一直生效，却被做成了只有关键词出现时才加载；普通剧情没说到关键词时，AI 就看不到它", {
+          field: "constant",
+          value: false,
+          impact: "作者宣称必须持续生效的规则会在多数普通对话轮次缺席",
+          suggestion: "把真正必须一直生效的短规则改成常驻，或放进基础提示；长例句和纠错素材另外设置玩家会自然说出的关键词",
+          confidence: "proven"
+        });
+      }
+      if (entry.enabled && !entry.constant && entry.keys.length && SUPPORT_ENTRY_RE.test(entry.title) && entry.keys.every(function (key) { return META_KEY_RE.test(key); })) {
+        add(findings, "must_fix", "WB_META_ONLY_TRIGGER_ROUTE", entry, "所有关键词都是作者才会用的制卡术语，玩家在正常剧情里几乎不会说：" + entry.keys.join("、"), {
+          field: "keys",
+          impact: "这个条目写了也很难被触发，只有玩家主动讨论文风、格式或变量时才可能出现",
+          suggestion: "核心规则改成短常驻；其他素材改用人物名、地点名、动作或剧情阶段等玩家会自然提到的关键词",
+          confidence: "heuristic"
+        });
+      }
+      if (entry.position && !POSITIONS.has(entry.position)) add(findings, "review", "WB_UNKNOWN_POSITION", entry, "条目填写了工具不认识的插入位置：" + JSON.stringify(entry.position) + "。请导入 RP-Hub 后确认它实际放在对话的哪里", { field: "position", value: entry.position, confidence: "live_test" });
+      if (entry.position === "at_depth" && (entry.depth === null || entry.depth === undefined || Number(entry.depth) < 0)) add(findings, "must_fix", "WB_AT_DEPTH_MISSING", entry, "条目选择了“按对话深度插入”，却没有填写有效的插入深度", { field: "depth", value: entry.depth });
+      if (entry.useProbability && Number(entry.probability) < 100) add(findings, "review", "WB_PROBABILISTIC", entry, "关键词出现后，这个条目仍只有 " + entry.probability + "% 的概率加载，所以有时会触发、有时不会", { field: "probability", value: entry.probability });
+      if (entry.useRegex) {
+        entry.keys.concat(entry.secondaryKeys).forEach(function (key) {
+          try { new RegExp(key, "i"); }
+          catch (err) { add(findings, "must_fix", "WB_REGEX_INVALID", entry, "这条正则关键词写错了，系统无法使用：" + key + "（" + err.message + "）", { field: "keys" }); }
+        });
+      }
+      var dangerousKeys = entry.enabled && !entry.constant && !entry.useRegex
+        ? entry.keys.filter(function (key) { return HIGH_FALSE_TRIGGER_KEYS.has(key); })
+        : [];
+      if (dangerousKeys.length && entry.content.length >= 500) {
+        var examples = dangerousKeys.slice(0, 5).map(function (key) {
+          return "“" + (FALSE_TRIGGER_EXAMPLES[key] || key) + "”会因“" + key + "”触发";
+        });
+        add(findings, "must_fix", "WB_HIGH_FALSE_TRIGGER_KEYS", entry, "这些关键词是日常高频说法，会把本条大段内容错误带出来：" + dangerousKeys.join("、") + "。例如：" + examples.join("；"), {
+          field: "keys",
+          impact: "玩家在谈工作、身体、天气、价格、开门或普通行动时，也会突然加载与当前意图无关的世界书，造成角色跑题和上下文污染",
+          suggestion: "删除这些宽泛词，改成能说明人物、地点和具体意图的组合词；每个新关键词至少用三个无关日常句做反向测试",
+          confidence: "proven"
+        });
+      }
+      if (entry.enabled && entry.constant && SPOILER_RE.test(entry.title + "\n" + entry.content)) add(findings, "review", "WB_CONSTANT_SPOILER", entry, "常驻含真相/结局类词，可能是防剧透规则，也可能提前泄露", { confidence: "heuristic" });
+      var templateTokenKeys = entry.keys.filter(function (key) { return /\{\{user\}\}/i.test(key); });
+      var usableLiteralKeys = entry.keys.filter(function (key) { return !/\{\{user\}\}/i.test(key); });
+      if (entry.enabled && !entry.constant && !entry.useRegex) {
+        var playerLiteralKeys = usableLiteralKeys.filter(function (key) {
+          var producer = classifyKeywordProducer(key, producerAnalysis);
+          return producer.type !== "ui_auto" && producer.type !== "state_auto";
+        });
+        if (playerLiteralKeys.length && playerLiteralKeys.every(function (key) { return literalKeyEffectiveLength(key) >= 3; })) {
+          add(findings, "must_fix", "WB_ALL_KEYS_THREE_OR_MORE", entry,
+            "这个非常驻条目需要玩家输入的关键词全是 3 个字或以上：" + playerLiteralKeys.map(function (key) { return "“" + key + "”"; }).join("、"), {
+              field: "keys",
+              value: playerLiteralKeys,
+              impact: "玩家需要原样说出其中一个完整长词才能触发；少字、多字或换一种自然说法都可能让这条世界书长期不加载。",
+              suggestion: "除非这些三字及以上的词是玩家一定会原样输入的固有名词，否则建议至少增加一个二字关键词作为兜底关键词来触发，否则很可能永远不触发",
+              confidence: "heuristic"
+            }
+          );
+        }
+        [
+          { label: "主要关键词", keys: entry.keys },
+          { label: "次要关键词", keys: entry.selective ? entry.secondaryKeys : [] }
+        ].forEach(function (group) {
+          group.keys.forEach(function (key) {
+            var producer = classifyKeywordProducer(key, producerAnalysis);
+            if (producer.type === "ui_auto" || producer.type === "state_auto") return;
+            var effectiveLength = literalKeyEffectiveLength(key);
+            if (effectiveLength > 3) {
+              add(findings, "review", "WB_LONG_LITERAL_KEY", entry,
+                group.label + " " + JSON.stringify(key) + " 有 " + effectiveLength + " 个有效字符，超过 3 字。工具无法准确判断它是稳定专名还是容易漏触发的固定说法，请作者人工确认",
+                {
+                  field: group.label === "主要关键词" ? "keys" : "secondaryKeys",
+                  value: key,
+                  impact: "平台按完整文字匹配；玩家多说一个字、少说一个字或换一种自然表达时，都可能无法触发本条目",
+                  suggestion: "若它不是必须完整输入的固定人名、地点名或组织名，请改成不超过 3 个字的自然入口；即使属于稳定专名，也请作者确认玩家在游玩中确实会自然输入",
+                  confidence: "heuristic"
+                }
+              );
+            } else if (effectiveLength === 3) {
+              add(findings, "review", "WB_THREE_CHAR_KEY_REVIEW", entry,
+                group.label + " " + JSON.stringify(key) + " 恰好 3 个有效字符。若它不是稳定的固定组合，仍可能因为玩家换说法而漏触发，请作者人工确认",
+                {
+                  field: group.label === "主要关键词" ? "keys" : "secondaryKeys",
+                  value: key,
+                  impact: "三字关键词处于临界长度；固定专名通常可用，自然口语或动作短语仍可能出现同义改写",
+                  suggestion: "确认它是否为玩家会原样输入的固定组合；如果不是，请补充更短、更稳定的入口词",
+                  confidence: "heuristic"
+                }
+              );
+            }
+          });
+        });
+      }
+      entry.keys.forEach(function (key) {
+        var folded = key.toLocaleLowerCase();
+        if (!keyOwners.has(folded)) keyOwners.set(folded, { key: key, entries: [] });
+        keyOwners.get(folded).entries.push(entry);
+        if (/^[\u3400-\u9fff\uf900-\ufaff]$/.test(key)) add(findings, "must_fix", "WB_SINGLE_CHAR_KEY", entry, "使用了单字关键词 " + JSON.stringify(key) + "。系统按“只要句子里含有这个字”来触发，很容易把无关条目带出来", {
+          field: "keys",
+          impact: "玩家说到任何包含这个字的人名、地名或普通句子时，都可能误触发本条目",
+          suggestion: "删除单字关键词，改用完整人名、稳定简称、专有地点名，或不容易误伤的两字以上组合词"
+        });
+        else if (BROAD_KEYS.has(key) && !HIGH_FALSE_TRIGGER_KEYS.has(key)) add(findings, "review", "WB_BROAD_KEY", entry, "使用了太宽泛的关键词 " + JSON.stringify(key) + "，普通聊天也可能无意触发", { field: "keys" });
+      });
+      if (templateTokenKeys.length) add(
+        findings,
+        "must_fix",
+        usableLiteralKeys.length ? "WB_TEMPLATE_TOKEN_IN_KEY_WITH_FALLBACK" : "WB_TEMPLATE_TOKEN_ONLY_KEYS",
+        entry,
+        "关键词里的 {{user}} 不会自动变成玩家名，系统只会寻找原样的“{{user}}”；" + (usableLiteralKeys.length ? "本条虽然还有其他关键词，但 {{user}} 这一条已经失效：" + usableLiteralKeys.join("、") : "本条也没有其他可用关键词"),
+        {
+          field: "keys",
+          impact: usableLiteralKeys.length ? "该条的一部分触发入口已经失效；不能因为还有备用关键词就当作合格" : "除非聊天里真的打出 {{user}} 这六个字符，否则这个非常驻条目无法触发",
+          suggestion: "删除 {{user}} 这个无效关键词，改成玩家会自然说出的称呼、身份、人物名或场景动作",
+          confidence: "proven"
+        }
+      );
+    });
+
+    ids.forEach(function (entries, key) {
+      if (entries.length > 1) add(findings, "must_fix", "WB_DUPLICATE_ID", null, "有多个世界书条目使用了同一个编号 " + key.split(":").slice(1).join(":") + "，涉及：" + entries.map(function (e) { return e.title; }).join("、"), { field: "id/uid", sourcePath: "data.character_book.entries" });
+    });
+    keyOwners.forEach(function (owner) {
+      var unique = Array.from(new Set(owner.entries.map(function (e) { return String(e.id) + " " + e.title; })));
+      if (unique.length > 1) add(findings, "review", "WB_SHARED_KEY", null, "同一个关键词 " + JSON.stringify(owner.key) + " 会同时带出这些条目：" + unique.join("、"), { field: "keys", sourcePath: "data.character_book.entries" });
+    });
+    var owners = Array.from(keyOwners.values()).sort(function (a, b) { return a.key.length - b.key.length; });
+    var overlapCount = 0;
+    for (var i = 0; i < owners.length; i++) {
+      var shortKey = owners[i].key;
+      if (shortKey.length < 2) continue;
+      for (var j = i + 1; j < owners.length; j++) {
+        var longKey = owners[j].key;
+        if (shortKey !== longKey && longKey.toLocaleLowerCase().includes(shortKey.toLocaleLowerCase())) {
+          overlapCount++;
+          if (overlapCount <= 30) add(findings, "review", "WB_SUBSTRING_COLLISION", null, "短关键词 " + JSON.stringify(shortKey) + " 包含在长关键词 " + JSON.stringify(longKey) + " 里面；输入长词时，两边可能一起触发", { field: "keys", sourcePath: "data.character_book.entries" });
+        }
+      }
+    }
+    var substantiveChars = Math.max(0, enabledChars - supportChars);
+    var supportRatio = enabledChars ? supportChars / enabledChars : 0;
+    var belowMinimumVolume = substantiveChars < MIN_WORLDBOOK_CHARS;
+    if (belowMinimumVolume) add(
+      findings,
+      "must_fix",
+      "WB_UNDERSIZED_DEFAULT_REJECT",
+      null,
+      "已启用的世界书共有 " + enabledChars + " 字，其中约 " + supportChars + " 字是文风、格式、界面变量等辅助说明；真正用于人物和世界设定的正文约 " + substantiveChars + " 字，少于投稿最低要求的 " + MIN_WORLDBOOK_CHARS + " 字，因此默认不过审。只有工具卡、游戏卡或确实用较短篇幅完成全部核心功能的特殊设定卡，才可以申请人工例外",
+      {
+        field: "content",
+        value: substantiveChars,
+        impact: "普通角色卡会被视为人物和世界内容不足；开场白、角色简介、文风例句、格式说明和界面变量说明不能拿来凑设定字数",
+        suggestion: "补充真正的人物、地点、事件、关系与规则内容；若申请例外，要逐项说明核心规则、角色/地点、关键词触发、状态变化和结局解锁条件已经完整",
+        confidence: "proven",
+        sourcePath: "data.character_book.entries"
+      }
+    );
+    if (supportRatio >= 0.25) add(findings, "must_fix", "WB_SUPPORT_TEXT_DOMINATES", null, "文风、格式、界面变量等辅助说明占已启用世界书的 " + Math.round(supportRatio * 100) + "%（" + supportChars + "/" + enabledChars + " 字）", {
+      field: "content",
+      impact: "世界书表面字数较高，但大量篇幅不提供人物、地点、事件、关系或可运行状态",
+      suggestion: "压缩重复的文风范例和格式说明，把篇幅用在玩家能触发的人物、地点、事件和状态内容上",
+      confidence: "heuristic",
+      sourcePath: "data.character_book.entries"
+    });
+
+    var hasUiState = card.uiTemplates.some(function (template) {
+      var state = template && firstDefined(template.variableState, template.initialVariableState, template.variables);
+      return state && typeof state === "object" && Object.keys(state).length > 0;
+    });
+    var enabledWorldText = card.entries.filter(function (entry) { return entry.enabled; }).map(function (entry) { return entry.content; }).join("\n");
+    var constantWorldText = card.entries.filter(function (entry) { return entry.enabled && entry.constant; }).map(function (entry) { return entry.content; }).join("\n");
+    var constantTokenEstimate = estimateTokens(constantWorldText);
+    var constantShare = enabledChars ? constantChars / enabledChars : 0;
+    if ((constants >= 12 && constantChars >= 16000 && constantShare >= 0.35) || constantTokenEstimate >= 18000) {
+      add(findings, "must_fix", "WB_CONSTANT_OVERLOAD", null, "每轮会无条件加载 " + constants + " 条常驻、共 " + constantChars + " 字，约 " + constantTokenEstimate + " 个内容量单位，占已启用世界书的 " + Math.round(constantShare * 100) + "%", {
+        field: "constant",
+        impact: "玩家即使只说“继续”，AI 也会先吞下大量人物档案、阶段规则和旧状态；这会挤掉近期对话，并让互相冲突的设定同时生效",
+        suggestion: "逐条回答“本轮不加载会坏在哪里”。优先只保留约 6—8 条短核心规则常驻；完整人物档案、地点、日常意志、阶段正文和事件资料改成准确关键词触发",
+        confidence: "proven",
+        sourcePath: "data.character_book.entries"
+      });
+    }
+
+    var openingConflictSignals = [];
+    var opening = card.firstMes || "";
+    var openingRoomMatch = opening.match(/房间号(?:是|为|[:：]?)\s*(\d{3,4})|(?:^|\D)(\d{3,4})号房/);
+    var openingRoom = openingRoomMatch ? (openingRoomMatch[1] || openingRoomMatch[2]) : "";
+    if (openingRoom) {
+      card.entries.filter(function (entry) { return entry.enabled && /酒店|宾馆|房间/.test(entry.title + "\n" + entry.content.slice(0, 180)); }).forEach(function (entry) {
+        var otherRooms = entry.keys.filter(function (key) { return /^\d{3,4}$/.test(key) && key !== openingRoom; });
+        if (otherRooms.length) openingConflictSignals.push("开场房间号是 " + openingRoom + "，但《" + entry.title + "》关键词仍写成 " + otherRooms.join("、"));
+      });
+    }
+    var witnessNames = [];
+    var witnessRe = /([\u3400-\u9fff\uf900-\ufaff]{2,4})(?:亲眼)?(?:看到了|撞见了?|目睹了?|发现了)/g;
+    var witnessMatch;
+    while ((witnessMatch = witnessRe.exec(opening))) {
+      if (witnessNames.indexOf(witnessMatch[1]) < 0) witnessNames.push(witnessMatch[1]);
+    }
+    witnessNames.forEach(function (name) {
+      var escaped = escapeRegex(name);
+      var unawareRe = new RegExp(escaped + "[^\\n]{0,55}(?:不知道|不知情|未知|完全空白|不在场)");
+      var absentRe = new RegExp("(?:禁止首轮|首轮)[\\s\\S]{0,90}" + escaped + "[\\s\\S]{0,35}(?:出场|登场|不在场|公寓)");
+      card.entries.filter(function (entry) { return entry.enabled && entry.constant; }).forEach(function (entry) {
+        if (hasCurrentStateConflict(entry.content, unawareRe) || hasCurrentStateConflict(entry.content, absentRe)) {
+          openingConflictSignals.push("开场已写明“" + name + "亲眼看见”，但常驻《" + entry.title + "》仍把她写成不知情或不在场");
+        }
+      });
+    });
+    openingConflictSignals = Array.from(new Set(openingConflictSignals));
+    if (openingConflictSignals.length >= 1) {
+      add(findings, "must_fix", "WB_OPENING_WORLD_STATE_CONFLICT", null, "开场和每轮固定加载的设定至少有 " + openingConflictSignals.length + " 处互相冲突：" + openingConflictSignals.slice(0, 5).join("；"), {
+        field: "first_mes/constant",
+        impact: "AI 第一轮会同时收到两套互斥事实，不知道该按“事情已经发生”还是“事情尚未发生”继续，极易回滚剧情、让角色消失或使用错误阶段",
+        suggestion: "先确定唯一开局，再把房间号、人物位置、知情状态、关系阶段和初始数值全部统一；删除常驻条目里的旧开场说明",
+        confidence: "proven"
+      });
+    }
+
+    var stageLabelEntries = card.entries.filter(function (entry) {
+      return entry.enabled && !entry.constant && entry.keys.length && entry.keys.length <= 3 &&
+        STAGE_ENTRY_RE.test(entry.title) && entry.keys.every(function (key) { return STAGE_LABEL_KEY_RE.test(key); });
+    });
+    var openingHasStageLabel = stageLabelEntries.some(function (entry) {
+      return entry.keys.some(function (key) { return opening.toLocaleLowerCase().includes(key.toLocaleLowerCase()); });
+    });
+    var naturalStageHits = STAGE_NATURAL_PROBES.filter(function (probe) {
+      return stageLabelEntries.some(function (entry) { return keyMatches(entry, probe); });
+    });
+    if (stageLabelEntries.length >= 3 && !hasUiState && !openingHasStageLabel && naturalStageHits.length <= 1) {
+      add(findings, "must_fix", "WB_STAGE_ROUTE_NOT_PRIMED", null, "发现 " + stageLabelEntries.length + " 个关键阶段条目只认后台阶段名（" + stageLabelEntries.slice(0, 6).map(function (entry) { return entry.keys.join("/"); }).join("、") + "），但开场没有写入这些阶段名，也没有界面变量保存当前阶段。自然说法“" + STAGE_NATURAL_PROBES.join("、") + "”基本都无法触发它们", {
+        field: "first_mes/keys",
+        impact: "玩家回复开场后的第一轮，真正应该生效的觉醒、反击或对质阶段不会加载；系统会继续沿用旧阶段",
+        suggestion: "在首条消息末尾建立正文 AI 能读到、后续扫描也能持续找到的当前阶段；同时给关键阶段补“撞见、已经知道、不分手、开始反击、见面、对质、选择”等自然口语入口",
+        confidence: "proven"
+      });
+    }
+    var storyDependsOnUiState = /好感|服从|堕落|当前阶段|current_state|active_target|is_active|UpdateVariable|变量更新/.test(enabledWorldText);
+    if (hasUiState && storyDependsOnUiState) add(findings, "review", "WB_UI_STATE_RUNTIME_DEPENDENCY", null, "剧情规则依赖界面里的变量，但只看卡片文件无法确认正文 AI 每轮都能读到这些变量的当前值", {
+      field: "uiTemplates.initialVariableState",
+      impact: "如果相关设置没有打开，AI 可能看见变量说明，却看不见现在的好感、阶段或位置，从而演错剧情",
+      suggestion: "导入 RP-Hub 后确认变量分析功能已打开，并实际测试阶段解锁和变量更新；若希望默认设置下也可靠，应给正文 AI 提供能直接读到的当前状态或备用规则",
+      confidence: "live_test",
+      sourcePath: "data.uiTemplates"
+    });
+    if (constants >= 8) add(findings, "review", "WB_MANY_CONSTANTS", null, "启用常驻 " + constants + " 条，需逐条说明每轮必要性", { field: "constant", sourcePath: "data.character_book.entries" });
+    if (constantChars >= 8000) add(findings, "review", "WB_CONSTANT_PRESSURE", null, "每轮都会加载的常驻正文共有 " + constantChars + " 字，约占 " + constantTokenEstimate + " 个内容量单位，可能挤占正常对话空间", { field: "constant", sourcePath: "data.character_book.entries" });
+
+    var mustFix = findings.filter(function (f) { return f.level === "must_fix"; }).length;
+    var reviewCount = findings.filter(function (f) { return f.level === "review"; }).length;
+    var fatalCodes = new Set(["WB_CONSTANT_OVERLOAD", "WB_OPENING_WORLD_STATE_CONFLICT"]);
+    var hasFatalStructure = findings.some(function (finding) { return fatalCodes.has(finding.code); });
+    var allowReviewOnlyPass = options.reviewOnlyCanPass === true;
+    var verdict = (belowMinimumVolume || hasFatalStructure) ? "结构不建议提交" : ((mustFix || (!allowReviewOnlyPass && reviewCount >= 10)) ? "结构修改后复核" : "结构倾向通过");
+    return {
+      coreVersion: VERSION,
+      scope: "card-worldbook-structure",
+      verdict: verdict,
+      liveTestRequired: true,
+      cardName: card.name || "(unnamed)",
+      stats: {
+        entries: card.entries.length,
+        enabled: card.entries.filter(function (e) { return e.enabled; }).length,
+        constants: constants,
+        enabledChars: enabledChars,
+        enabledTokenEstimate: estimateTokens(enabledWorldText),
+        constantChars: constantChars,
+        constantTokenEstimate: constantTokenEstimate,
+        constantShare: constantShare,
+        globalScanDepth: card.globalScanDepth,
+        tokenBudget: card.tokenBudget,
+        recursiveScanning: card.recursiveScanning
+      },
+      volumeGate: {
+        minimumWorldbookChars: MIN_WORLDBOOK_CHARS,
+        measuredEnabledWorldbookChars: enabledChars,
+        supportInstructionChars: supportChars,
+        substantiveWorldbookChars: substantiveChars,
+        supportInstructionRatio: supportRatio,
+        belowMinimum: belowMinimumVolume,
+        defaultReject: belowMinimumVolume,
+        manualExceptionTypes: ["工具卡", "游戏卡", "特殊设定卡"]
+      },
+      findings: findings,
+      entries: card.entries.map(function (e) {
+        return {
+          index: e.index, id: e.id, title: e.title, enabled: e.enabled, constant: e.constant,
+          keys: e.keys, secondaryKeys: e.secondaryKeys, selective: e.selective,
+          useRegex: e.useRegex, scanDepth: e.scanDepth, probability: e.probability,
+          useProbability: e.useProbability, position: e.position, depth: e.depth,
+          order: e.order, chars: e.content.length
+        };
+      }),
+      probeResults: simulate(card.entries, options.probes || []),
+      keywordProducers: producerAnalysis
+    };
+  }
+
+  return {
+    VERSION: VERSION,
+    MIN_WORLDBOOK_CHARS: MIN_WORLDBOOK_CHARS,
+    estimateTokens: estimateTokens,
+    literalKeyEffectiveLength: literalKeyEffectiveLength,
+    analyzeKeywordProducers: analyzeKeywordProducers,
+    classifyKeywordProducer: classifyKeywordProducer,
+    parsePayload: parsePayload,
+    extractPngCardJson: extractPngCardJson,
+    normalizeCard: normalizeCard,
+    auditCard: auditCard,
+    simulate: simulate
+  };
+});
+</script>
+<!-- RPHUB_AUDIT_CORE_END -->
+<script>(function (root, factory) {
   const api = factory();
   root.Zaojing = root.Zaojing || {};
   root.Zaojing.core = api;
@@ -269,11 +1130,11 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
      改版本时只改这一处，然后跑 tools/package.sh 重新打包。
      格式必须严格是 x.y.z——tools/asserts/version.js 用 /^\d+\.\d+\.\d+$/ 校验，
      所以构建戳不能拼在这里，只能放下面的 WORKBENCH_BUILD。 */
-  const WORKBENCH_VERSION='1.2.9';
+  const WORKBENCH_VERSION='1.2.10';
   /* 构建戳：由 tools/sync-site.sh 在同步时自动改写成「日期.sha」，手改这里没有意义。
      它存在的理由就是版本号看不出来的那件事——线上跑的到底是哪一次构建。 */
-  const WORKBENCH_BUILD='2026.10.15.9496393';
-  const WORKBENCH_RELEASE={"title":"修复确认创意后卡住及其他生成入口异常","notes":["修复 1.2.8 共用体检函数的未定义变量，恢复常规卡、肉卡和流水线卡的生成、续写与体检。","确认创意不再提前清空方案；前置检查异常会显示原因、重试和备份入口，防止出现空白面板。准备期间重复点击不会启动多份请求。","人物档案改为按需触发，协议为展示与索引预留常驻空间，解决新常驻上限与旧生成指令冲突；八万字总量要求保持。","可选阶段不再强制生成；减少常驻或跳过阶段时，缺少的总字数预算自动补到玩法，避免所有阶段都完成却永远达不到总量。","保留 1.2.7 的 Diff 进度和容错、1.2.8 的编号查重及常驻检查；新生成条目自动避开已有编号，质检失败后的 Diff 重试继续执行预检。"]};
+  const WORKBENCH_BUILD='2026.10.15.5360f98';
+  const WORKBENCH_RELEASE={"title":"质检台对齐过审助手，修复生成与出卡流程","notes":["质检台接入指定《过审助手V1.6》的原版 2.5.0 审核核心：补齐关键词入口、插入深度、常驻过载、开场状态冲突等检查，原版人工复核提示完整保留。","体检、生成完成检查与导出条件同步；不足八万字、重复正文、错误分类会在体检台列明，避免显示绿色却不能导出。最终检查仍有错误或建议时，保留草稿并提供修复入口。","修复确认创意后卡住的问题；常规卡、肉卡、流水线卡与三种呈现模式均重新验证。人物档案按需触发，可选阶段跳过后的预算补到玩法，八万字要求保持。","旧卡适配常驻预算时保留正文，长档案按原文分册并补调用索引；修正展示协议的位置和流水线变量模式指令，改中文显示名称继续保留正则预览。","恢复停止 Diff 请求后的重试按钮；修复方案按小批复检，拒绝新增问题、正文丢失、无效修改和预览退化。此公告替换旧公告，刷新前先保存工程。"]};
   /* 注意：工厂函数里没有 root 这个变量（root 只是外层 IIFE 的参数），必须用 globalThis。 */
   try{globalThis.Zaojing=globalThis.Zaojing||{};globalThis.Zaojing.version=WORKBENCH_VERSION;globalThis.Zaojing.build=WORKBENCH_BUILD;globalThis.Zaojing.releaseNotes=WORKBENCH_RELEASE;}catch(_){ }
   try{
@@ -847,7 +1708,7 @@ Zaojing.baseline=Zaojing.baseline||{};Zaojing.baseline.archiveBase64="UEsDBAoAAA
   const isEnabled=entry=>entry?.enabled!==false&&entry?.disable!==true;
   function runtime(card){const out=[];const data=card&&card.data&&typeof card.data==='object'?card.data:card;if(!data||typeof data!=='object'||Array.isArray(data))return[item('runtime','error','INVALID_ROOT','角色卡根结构无效','需要 JSON 对象，不能是数组或纯文本。')];if(card.spec&&!/^chara_card_v[23]$/i.test(card.spec))out.push(item('runtime','warning','UNKNOWN_SPEC','未知角色卡版本','当前只明确覆盖常见 V2/V3 字段，请在目标前端实测。'));if(!String(data.name||'').trim())out.push(item('runtime','error','MISSING_NAME','缺少角色名','大多数前端会把名称作为角色卡主标识。',{path:card.data?'data.name':'name',value:'未命名角色'}));if(!String(data.first_mes||'').trim())out.push(item('runtime','error','MISSING_OPENING','缺少开场白','导入后无法开始对话。'));if(['name','first_mes','description','personality','scenario'].some(k=>data[k]!=null&&typeof data[k]!=='string'))out.push(item('runtime','error','INVALID_FIELD_TYPE','基础字段类型异常','名称、开场、描述、性格和场景应为文本。'));const html=String(data.first_mes||'');if(/\x3cscript\b/i.test(html))out.push(item('runtime','warning','SCRIPT_IN_OPENING','开场白包含脚本','不同前端可能拦截脚本，建议改为纯 HTML/CSS。'));const scripts=data.extensions?.regex_scripts||data.regex_scripts||[];if(Array.isArray(scripts)&&scripts.some(s=>{try{new RegExp(String(s.regex||s.findRegex||''));return false}catch{return true}}))out.push(item('runtime','error','INVALID_REGEX','存在无法编译的正则','请检查正则表达式语法和转义。'));loreEntries(card).forEach((entry,index)=>{if(!isEnabled(entry))return;const name=entryName(entry,index),keys=loreKeys(entry);if(!entry.constant&&!keys.length)out.push(item('runtime','error','LORE_WONT_TRIGGER',`${name} 无法触发`,'已启用且并非常驻，但没有关键词。'));if(!entry.constant&&Number(entry.scanDepth)===0)out.push(item('runtime','error','ZERO_SCAN_DEPTH',`${name} 扫描深度为 0`,'条件世界书不会扫描到对话关键词，请将扫描深度设为大于 0。'));if(entry.useRegex&&keys.some(key=>{try{new RegExp(key);return false}catch{return true}}))out.push(item('runtime','error','INVALID_LORE_REGEX',`${name} 的关键词正则无效`,'启用了正则匹配，但至少一个关键词无法编译。'));if(!String(entry.content||'').trim())out.push(item('runtime','warning','EMPTY_LORE_CONTENT',`${name} 正文为空`,'即使触发也没有可注入的世界书内容。'))});return out;}
   function budgetedConstant(card,entry){const d=card.data||card,kind=d.extensions?.rp_studio?.cardKind;return entry?.constant===true&&['meat','pipeline'].includes(kind)&&(kind==='meat'?['runtime','profile']:['protocol','profile']).includes(entry.extensions?.rp_studio?.category);}
-  function quality(card){const d=card?.data||card,out=[];const first=String(card.first_mes||card.data?.first_mes||'');if(first.replace(/<[^>]+>/g,'').trim().length<80)out.push(item('quality','warning','THIN_OPENING','开场信息偏薄','开场最好同时交代场景、角色行动和可回应的钩子。'));const entries=loreEntries(card),baseText=[card?.data?.description,card?.data?.personality,card?.data?.scenario].map(String).join('').length,loreText=entries.reduce((n,e)=>n+String(e?.content||'').length,0);if(entries.some(e=>isEnabled(e)&&!e.constant&&!loreKeys(e).length))out.push(item('quality','warning','EMPTY_LORE_KEYS','条件世界书存在空关键词','已启用且并非常驻的条目通常不会按预期触发。'));if(entries.some(e=>String(e?.content||'').length>8000&&!budgetedConstant(card,e)))out.push(item('quality','warning','OVERSIZED_LORE_ENTRY','存在过长的单条世界书','建议拆分主题，减少一次触发注入的大段无关内容。'));const idSeen=new Map(),idDup=new Map();entries.forEach((e,i)=>{const id=e?.id??e?.uid;const nm=entryName(e,i);if(id!=null&&id!==''){if(idSeen.has(id))idDup.set(id,[idSeen.get(id),nm]);else idSeen.set(id,nm)}});idDup.forEach((names,id)=>out.push(item('quality','error','REVIEW_DUPLICATE_ENTRY_ID',`多个世界书条目使用了同一个编号 ${id}（${names.join('、')}）`,'重复编号会让条目无法触发或错误触发。给每条复制出来的条目重新生成唯一 id（uid），再重新导出。')));const liveLore=entries.filter(isEnabled),con=liveLore.filter(e=>e.constant===true||e?.extensions?.constant===true);const conChars=con.reduce((n,e)=>n+String(e?.content||'').length,0);const conText=con.map(e=>String(e?.content||'')).join('');const conCjk=(conText.match(/[\u3400-\u9fff\uf900-\ufaff]/g)||[]).length;const conLatin=(conText.match(/[A-Za-z0-9_]+/g)||[]).join('').length;const conPunct=(conText.match(/[^\sA-Za-z0-9_\u3400-\u9fff\uf900-\ufaff]/g)||[]).length;const conTokens=Math.ceil(conCjk*1.05+conLatin/4+conPunct*0.45);if(conTokens>=18000)out.push(item('quality','error','REVIEW_CONSTANT_OVERLOAD',`每轮固定加载的常驻共 ${con.length} 条 ${conChars} 字，约 ${conTokens} 个内容量单位，严重过载`,'玩家即使只说「继续」也会先吞下全部常驻。逐条回答「本轮不加载会坏在哪里」：只保留短核心规则常驻，完整人物档案、地点、阶段正文改成关键词触发。'));const kind=d?.extensions?.rp_studio?.cardKind;const conBudget=kind==='meat'?12000:kind==='pipeline'?8000:12000;if(conTokens<18000&&conChars>conBudget)out.push(item('quality','warning','REVIEW_CONSTANT_BUDGET',`常驻层 ${conChars} 字，超${kind==='pipeline'?'流水线':'默认'}预算 ${conBudget}`,'常驻每轮都注入。人物档案类内容建议拆成条目、挂人物名裸名键按需触发。'));const constText=con.map(e=>String(e?.content||'')).join('\n');const allLoreKeys=new Set(liveLore.flatMap(e=>loreKeys(e)));const covered=[...allLoreKeys].filter(k=>constText.includes(k)).length;if(liveLore.length>=20&&allLoreKeys.size>=10&&covered/allLoreKeys.size<0.25)out.push(item('quality','warning','REVIEW_INDEX_COVERAGE',`常驻索引只覆盖 ${covered}/${allLoreKeys.size} 个关键词`,'写一条 constant 索引条目，成组列出人物名、地点名、物件名，让 AI 每轮读得到叫得出，条目才拉得进。'));if(loreText>12000&&loreText>Math.max(1,baseText)*4)out.push(item('quality','warning','LORE_RATIO_HIGH','世界书正文占比过高','世界书明显大于角色基础设定，建议检查是否堆入了不必要的辅助文本。'));if(JSON.stringify(card).length>500000)out.push(item('quality','info','LARGE_CARD','卡片体积较大','过大的常驻内容会增加上下文消耗。'));return out;}
+  function quality(card){const d=card?.data||card,out=[];const first=String(card.first_mes||card.data?.first_mes||'');if(first.replace(/<[^>]+>/g,'').trim().length<80)out.push(item('quality','warning','THIN_OPENING','开场信息偏薄','开场最好同时交代场景、角色行动和可回应的钩子。'));const entries=loreEntries(card),baseText=[card?.data?.description,card?.data?.personality,card?.data?.scenario].map(String).join('').length,loreText=entries.reduce((n,e)=>n+String(e?.content||'').length,0);if(entries.some(e=>isEnabled(e)&&!e.constant&&!loreKeys(e).length))out.push(item('quality','warning','EMPTY_LORE_KEYS','条件世界书存在空关键词','已启用且并非常驻的条目通常不会按预期触发。'));if(entries.some(e=>String(e?.content||'').length>8000&&!budgetedConstant(card,e)))out.push(item('quality','warning','OVERSIZED_LORE_ENTRY','存在过长的单条世界书','建议拆分主题，减少一次触发注入的大段无关内容。'));const idSeen=new Map(),idDup=new Map();entries.forEach((e,i)=>{const id=e?.id??e?.uid;const nm=entryName(e,i);if(id!=null&&id!==''){if(idSeen.has(id))idDup.set(id,[idSeen.get(id),nm]);else idSeen.set(id,nm)}});idDup.forEach((names,id)=>out.push(item('quality','error','REVIEW_DUPLICATE_ENTRY_ID',`多个世界书条目使用了同一个编号 ${id}（${names.join('、')}）`,'重复编号会让条目无法触发或错误触发。给每条复制出来的条目重新生成唯一 id（uid），再重新导出。')));const liveLore=entries.filter(isEnabled),con=liveLore.filter(e=>e.constant===true||e?.extensions?.constant===true);const conChars=con.reduce((n,e)=>n+String(e?.content||'').length,0);const conText=con.map(e=>String(e?.content||'')).join('');const conCjk=(conText.match(/[\u3400-\u9fff\uf900-\ufaff]/g)||[]).length;const conLatin=(conText.match(/[A-Za-z0-9_]+/g)||[]).join('').length;const conPunct=(conText.match(/[^\sA-Za-z0-9_\u3400-\u9fff\uf900-\ufaff]/g)||[]).length;const conTokens=globalThis.RPHubAuditCore.estimateTokens(con.map(e=>String(e?.content||'')).join('\n'));if(conTokens>=18000)out.push(item('quality','error','REVIEW_CONSTANT_OVERLOAD',`每轮固定加载的常驻共 ${con.length} 条 ${conChars} 字，约 ${conTokens} 个内容量单位，严重过载`,'玩家即使只说「继续」也会先吞下全部常驻。逐条回答「本轮不加载会坏在哪里」：只保留短核心规则常驻，完整人物档案、地点、阶段正文改成关键词触发。'));const kind=d?.extensions?.rp_studio?.cardKind;const conBudget=kind==='meat'?12000:kind==='pipeline'?8000:12000;if(conTokens<18000&&conChars>conBudget)out.push(item('quality','warning','REVIEW_CONSTANT_BUDGET',`常驻层 ${conChars} 字，超${kind==='pipeline'?'流水线':'默认'}预算 ${conBudget}`,'常驻每轮都注入。人物档案类内容建议拆成条目、挂人物名裸名键按需触发。'));const constText=con.map(e=>String(e?.content||'')).join('\n');const allLoreKeys=new Set(liveLore.flatMap(e=>loreKeys(e)));const covered=[...allLoreKeys].filter(k=>constText.includes(k)).length;if(liveLore.length>=20&&allLoreKeys.size>=10&&covered/allLoreKeys.size<0.25)out.push(item('quality','warning','REVIEW_INDEX_COVERAGE',`常驻索引只覆盖 ${covered}/${allLoreKeys.size} 个关键词`,'写一条 constant 索引条目，成组列出人物名、地点名、物件名，让 AI 每轮读得到叫得出，条目才拉得进。'));if(loreText>12000&&loreText>Math.max(1,baseText)*4)out.push(item('quality','warning','LORE_RATIO_HIGH','世界书正文占比过高','世界书明显大于角色基础设定，建议检查是否堆入了不必要的辅助文本。'));if(JSON.stringify(card).length>500000)out.push(item('quality','info','LARGE_CARD','卡片体积较大','过大的常驻内容会增加上下文消耗。'));return out;}
   function submission(card){const out=[];if(!globalThis.Zaojing.tagContract.valid(String(card?.data?.creator_notes??card?.creator_notes??'')))out.push(item('submission','error','AUTHOR_NOTES_NOT_TAGS','作者注释需要改为 TAG','仅保留 # 开头、空格分隔的简短题材 TAG；现有剧情规则先移到设定或世界书，不能直接丢弃。'));const entries=loreEntries(card),owners=new Map();
   if(String((card&&card.data&&card.data.extensions&&card.data.extensions.rp_hub_watermark)||'')!=='rp-hub')out.push(item('submission','error','MISSING_HUB_WATERMARK','缺少本站水印','data.extensions.rp_hub_watermark 必须为 rp-hub，否则站点上传会判定为非本站卡片并拒收。工具导出时会自动注入，若出现此条请重新导出一次。'));entries.forEach((entry,index)=>{if(!isEnabled(entry))return;const name=entryName(entry,index),keys=loreKeys(entry),lowerKeys=keys.map(key=>key.toLowerCase());if(!entry.constant&&!keys.length)out.push(item('submission','error','REVIEW_EMPTY_KEYS',`${name} 缺少审核关键词`,'启用且非常驻的世界书必须配置可自然触发的关键词。'));if(!entry.constant&&Number(entry.scanDepth)===0)out.push(item('submission','error','REVIEW_ZERO_SCAN',`${name} 无法扫描关键词`,'扫描深度为 0，关键词不会正常参与触发。'));const placeholders=keys.filter(key=>/\{\{\s*(?:user|char)\s*\}\}/i.test(key));if(placeholders.length)out.push(item('submission','error','REVIEW_PLACEHOLDER_KEYS',`${name} 使用无效占位符`,'关键词中不能使用 {{user}}、{{char}} 等变量占位符。'));const meta=keys.filter(key=>metaTerms.some(term=>key.toLowerCase().includes(term)));if(meta.length)out.push(item('submission',meta.length===keys.length?'error':'warning','REVIEW_META_KEYS',`${name} 含制卡元术语`,'请改为玩家在剧情中会自然说出的角色名、地点名、组织名、物品名、事件名或动作词。'));if(keys.some(key=>key.length>20||/[。！？!?；;\n]/.test(key)))out.push(item('submission','warning','REVIEW_SENTENCE_KEYS',`${name} 含整句或过长关键词`,'关键词应是简短、自然、可复现的剧情用词。'));if(new Set(lowerKeys).size<lowerKeys.length)out.push(item('submission','warning','REVIEW_DUPLICATE_KEYS',`${name} 内有重复关键词`,'删除同一条目中的重复词，避免无效堆叠。'));if(!entry.constant&&/(每轮|始终|必须遵守|核心规则|永久生效|无条件)/.test(String(entry.content||'')))out.push(item('submission','warning','REVIEW_CORE_RULE_CONDITIONAL',`${name} 可能把核心规则设成了条件触发`,'若该短规则确实每轮都必须生效，应改为始终常驻；否则请改写正文避免误判。'));if(entry.constant&&String(entry.content||'').length>2500&&!budgetedConstant(card,entry))out.push(item('submission','warning','REVIEW_LARGE_CONSTANT',`${name} 的常驻正文过长`,'常驻条目每轮都会占用上下文，只保留真正必须持续生效的短规则。'));keys.forEach(key=>{const id=key.toLowerCase(),previous=owners.get(id);if(previous&&previous!==name)out.push(item('submission','warning','REVIEW_OVERLAP_KEYS',`关键词“${key}”在多条世界书中重叠`,`${previous} 与 ${name} 会被同时触发，请确认这是有意设计。`));else owners.set(id,name)})});if(entries.length>200)out.push(item('submission','warning','SUBMISSION_WORLDBOOK_VOLUME','世界书条目很多','条目超过 200，建议合并重复主题并检查平台体积限制。'));if(JSON.stringify(card).length>1000000)out.push(item('submission','warning','SUBMISSION_CARD_VOLUME','角色卡总体积很大','提交前请确认目标平台的文件大小限制，并压缩不必要内容。'));return out;}
   function runAll(card={}){return{runtime:runtime(card),quality:quality(card),submission:submission(card)};}
@@ -1862,7 +2723,7 @@ setTimeout(()=>Z.integratedProtection.refresh(),0);
  function designPrompt(card,kind,mode){
   const s=normalize(card),d=card.data||card,m=d.extensions?.rp_studio||{};
   const common='只返回 JSON：{"rationale":"视觉与题材、材料、标题用语及玩法的关系","css":"完整 CSS","speakers":[{"name":"真实角色名","class":"s1"}],"keywords":[{"group":"place","words":["已有专名"]}],"optional":{"monologue":true,"names":true,"keywords":false,"state":true},"stateFields":[{"key":"阶段","label":"题材化字段标题"}],"optionsTitle":"题材化行动标题","coverPrompt":"英文标签流"}。不提供预设主题，由你完整设计 CSS，工具只生成结构和固定点击脚本。CSS 只使用 .rp-shell、.rp-scene、.rp-say（可 .s1 至 .s4）、.rp-mind、.rp-name、.rp-kw-<group>、.rp-state、.rp-field、.rp-k、.rp-v、.rp-opts、.rp-opt、.rp-opt i、.rp-opt.is-picked；允许简单伪类和宽度 @media，不能写 body/html/*/全局选择器、外部资源、url、@import、脚本或 position:fixed。外壳、对白、选项必备；正文和选项对比度至少4.5，心理和次要文字至少3；375px下不横向滚动。.rp-shell 必须用 white-space:pre-line 或 pre-wrap 保留自然段换行。禁止透明度影响文字和文字底层渐变（装饰层可不用渐变）。运行时 .markdown-body 的首尾 padding 规则有较高优先级，需要控制时可用 .rp-shell.rp-shell.rp-shell 提高本卡选择器优先级。不写 HTML、onclick 或 data-slash，不生成 JS。状态字段使用固定 key=值，最多8项，字段顺序固定，不出现内部账本或秘密。先统一对白色，不依赖分角色识别。coverPrompt 必须是英文 danbooru/NAI 标签流：英文逗号加空格分隔的 8–16 个纯英文标签，例：1girl, solo, long black hair, red dress, night, city lights, upper body, vertical, detailed background。禁止中文、禁止整句说明、禁止把角色卡名称写进去。中文字符串会让生图接口出废图。';
-  const branch=kind==='meat'?'肉卡：用简洁私密纸面，必备正文、对白、心理和选项，optional.monologue=true。状态只放阶段加2–4个已有身体或关系字段（合计3–5项），不强求专名。CSS UTF-8预算6KB。例1：坏：所有卡都套米黄信纸和酒红左边框；好：私密记录按本卡场所和人物习惯安排留白与批注。例2：坏：堆通用数值仪表而忽略玩法；好：遥控台用强度刻度与当前操作提示承载本卡真实状态，外观仍由你设计。':kind==='pipeline'?'流水线肉卡：美化极简是本卡型的特色不是缺陷。必备三件套必须齐全——正文沉浸容器（信笺/纸面外壳 .rp-shell）、对白高光（.rp-say）、选项（.rp-opt），外加场景行（.rp-scene）；三件套缺一 lint 直接不通过。不做额外专名或人名高光，不做 UI 模板，不做变量面板——状态栏由正文协议用 emoji 纯文本输出，所以 optional.state=false、optional.keywords=false、optional.names=false，stateFields 返回空数组。CSS UTF-8预算4KB。外观按本卡女主的场所与身份取材（家居便签/旅馆信纸/出租屋台历），不追求华丽。':'正经卡：必须从实际题材取材，在rationale说明材料（如宣纸、档案、终端、胶片）、标题用语（如章回、卷、第N集、档案编号）与核心玩法绑定的状态字段；不能所有卡长一样。人名只来自世界书人物标题，专名取已有设定，不使用卡片标题冒充角色名。CSS UTF-8预算14KB。例1：坏：古风和科幻都套米黄信纸和酒红左边框；好：女将军的军府卷册用军令、兵符与行军阶段组织视觉。例2：坏：所有题材都叫好感度、下一步；好：航站终端以剩余氧量、舱段权限和任务窗口组织操作语言。只借鉴设计思路，不复制参考CSS。';
+  const branch=kind==='meat'?'肉卡：用简洁私密纸面，必备正文、对白、心理和选项，optional.monologue=true。状态只放阶段加2–4个已有身体或关系字段（合计3–5项），不强求专名。CSS UTF-8预算6KB。例1：坏：所有卡都套米黄信纸和酒红左边框；好：私密记录按本卡场所和人物习惯安排留白与批注。例2：坏：堆通用数值仪表而忽略玩法；好：遥控台用强度刻度与当前操作提示承载本卡真实状态，外观仍由你设计。':kind==='pipeline'?'流水线肉卡：美化极简是本卡型的特色不是缺陷。必备三件套必须齐全——正文沉浸容器（信笺/纸面外壳 .rp-shell）、对白高光（.rp-say）、选项（.rp-opt），外加场景行（.rp-scene）；三件套缺一 lint 直接不通过。不做额外专名或人名高光，optional.keywords=false、optional.names=false。当前用户选择的呈现模式优先于流水线默认：'+(mode==='variable'?'变量模式需要 1–3 个已有公开状态字段和对应 initialState，由原生变量面板承载；optional.state=false，stateFields 不得为空。':mode==='regex'?'正则模式可用少量已有公开状态字段；需要面板时 optional.state=true 并提供 stateFields，不需要则 false 和空数组；不使用原生变量模板。':'无面板模式不做 UI 模板或变量面板，optional.state=false，stateFields 返回空数组。')+'CSS UTF-8预算4KB。外观按本卡女主的场所与身份取材（家居便签/旅馆信纸/出租屋台历），不追求华丽。':'正经卡：必须从实际题材取材，在rationale说明材料（如宣纸、档案、终端、胶片）、标题用语（如章回、卷、第N集、档案编号）与核心玩法绑定的状态字段；不能所有卡长一样。人名只来自世界书人物标题，专名取已有设定，不使用卡片标题冒充角色名。CSS UTF-8预算14KB。例1：坏：古风和科幻都套米黄信纸和酒红左边框；好：女将军的军府卷册用军令、兵符与行军阶段组织视觉。例2：坏：所有题材都叫好感度、下一步；好：航站终端以剩余氧量、舱段权限和任务窗口组织操作语言。只借鉴设计思路，不复制参考CSS。';
   return common+'\n'+branch+'\n'+(mode==='variable'?'额外返回 initialState 对象，键名逐字对应 stateFields.key，值为开场已确认的字符串、有限数字或布尔值；未知用未确认。':'')+'\n上下文：'+JSON.stringify({cardKind:kind,name:d.name,scenario:d.scenario,description:d.description,first_mes:d.first_mes,blueprint:m.blueprint,characterTitles:s.names})+'\n'+Z.uiModes.instruction(mode);
  }
  async function validateSpec(card,obj,kind,mode){
@@ -2077,7 +2938,7 @@ setTimeout(()=>Z.integratedProtection.refresh(),0);
     d.uiTemplates=[];d.extensions.rp_hub_ui_templates=[];
     d.first_mes=Z.cardStyle.migrateOpening(d.first_mes,design.stateFields);
     const protocol='正文直接写段落，不输出 HTML、CSS、XML 标签。对白用「」，心理活动用（），场景切换另起一行写【地点·时间】。\n'+(meta(card).uiMode==='variable'?'状态使用下方原生变量协议，不重复输出〔状态〕。':design.optional.state?'正文之后输出〔状态〕'+design.stateFields.map(f=>f.key+'=值').join('｜')+'〔/状态〕；字段顺序固定，字段名逐字一致，值仅根据当前已发生剧情更新；未知用未确认，不泄露秘密。':'不输出状态块。')+'\n最后另起行给 2–4 条选项，每条一行，以 ①②③④ 开头，只写意图不写结果。选项只追加到聊天输入框，由玩家修改并发送。';
-    const previous=book(card).findIndex(e=>e.id==='rp-studio-presentation');if(previous>=0)book(card).splice(previous,1);book(card).push({id:'rp-studio-presentation',comment:'输出协议：正文、高光与选项',keys:[],content:protocol,constant:true,enabled:true,position:0,order:20,extensions:{rp_studio:{category:'support'}}});
+    const previous=book(card).findIndex(e=>e.id==='rp-studio-presentation');if(previous>=0)book(card).splice(previous,1);book(card).push({id:'rp-studio-presentation',comment:'输出协议：正文、高光与选项',keys:[],content:protocol,constant:true,enabled:true,position:'before_char',order:20,extensions:{rp_studio:{category:'support'}}});
     meta(card).presentation=design;meta(card).rendererVersion='0.4.0';meta(card).sourceRevision=Z.sourceEngine?.revision||'embedded-1.8.9';
     if(meta(card).uiMode==='variable')Z.uiModes.native(card,design);
   }
@@ -2682,7 +3543,7 @@ for (const e of live.filter((x) => catOf(x) === 'play')) {
       const pn=playNoveltyGate(card), nlabel=kind==='meat'?'肉卡玩法新':'流水线玩法新';
       for(const g of pn.results)result.runtime.push({group:'runtime',severity:g.severity,code:tag+g.gate,title:nlabel+'闸门',detail:g.detail});
       result.quality.push({group:'quality',severity:'info',code:tag+'NOVELTY',title:nlabel+'摘要',detail:'玩法条目 '+pn.playCount+' 条 · 落在本卡锚点上的 '+(pn.anchorTotal?pn.anchorHit+'/'+pn.playCount:'无锚点可核对')+' · 锚点 '+pn.anchorTotal+' 个'});
-    }else {const pn=playNoveltyGate(card);for(const g of pn.results)result.runtime.push({group:'runtime',severity:g.severity,code:'PLAY_NOVELTY',title:'玩法检查',detail:g.detail});if((card.data||card).extensions?.rp_studio?.profile===bundle.policy.id){const m=measure(card);result.quality=result.quality.filter(x=>x.code!=='LORE_RATIO_HIGH');for(const detail of issues(card,!!meta(card).coverSelected))result.quality.push({group:'quality',severity:detail.includes('世界书')||detail.includes('分类')?'error':'warning',code:'RP_FULL_CARD_PENDING',title:'完整卡验收待完成',detail});}}const uiCheck=meta(card).repairUiCheck;if(uiCheck?.status==='fail'&&Z.verifiedRepair?.uiSignature(card)===uiCheck.signature)result.runtime.push({group:'runtime',severity:'error',code:'LOCAL_UI_FAILED',title:'本地界面校验未通过',detail:uiCheck.reason});return result;};
+    }else {const pn=playNoveltyGate(card);for(const g of pn.results)result.runtime.push({group:'runtime',severity:g.severity,code:'PLAY_NOVELTY',title:'玩法检查',detail:g.detail});if((card.data||card).extensions?.rp_studio?.profile===bundle.policy.id){const m=measure(card);result.quality=result.quality.filter(x=>x.code!=='LORE_RATIO_HIGH');for(const detail of issues(card,!!meta(card).coverSelected))result.quality.push({group:'quality',severity:detail.startsWith('目标平台')?'info':detail.includes('世界书')||detail.includes('分类')?'error':'warning',code:'RP_FULL_CARD_PENDING',title:'完整卡验收待完成',detail});}}const uiCheck=meta(card).repairUiCheck;if(uiCheck?.status==='fail'&&Z.verifiedRepair?.uiSignature(card)===uiCheck.signature)result.runtime.push({group:'runtime',severity:'error',code:'LOCAL_UI_FAILED',title:'本地界面校验未通过',detail:uiCheck.reason});return result;};
   Z.fullCard={bundle,measure,cardPlan,validateCraftModules,meatModulesFor,skillContext,generate,displayRules,installDisplay,issues,meta,esc,autoCover,imageSettings,digest,localCheck,keywordGates,playNoveltyGate,isGenericKey:key=>MIS_TRIGGER.has(key)||['性爱','做爱','亲密','性交','爱','上床','干她','来一发'].includes(key),stamp,hasStamp,HUB_WATERMARK};
   document.addEventListener('DOMContentLoaded',()=>{
     const h=Z.integrationHost;if(!h)return;
@@ -3335,6 +4196,33 @@ keys 用玩家会自然说出的行为词，从该档自己的正文里长出来
  globalThis.RPStudioMeatSkill={version:'0.2.0',methodology,index,modules};
 })();
 
+/* Use the reference assistant's unchanged canonical core, including its review-only pass policy. */
+(function(){
+ 'use strict';const Z=globalThis.Zaojing,F=Z.fullCard,C=globalThis.RPHubAuditCore,old=Z.audit.runAll;
+ const labels={WB_EMPTY_CONTENT:'世界书正文为空',WB_BLANK_KEY:'关键词含空白项',WB_UNREACHABLE_NO_KEY:'非常驻条目没有触发入口',WB_SCAN_DEPTH_ZERO:'扫描深度为零',WB_CORE_INSTRUCTION_CONDITIONAL:'持续规则被设成条件触发',WB_META_ONLY_TRIGGER_ROUTE:'触发入口只有制卡术语',WB_AT_DEPTH_MISSING:'插入深度缺失',WB_REGEX_INVALID:'关键词正则无效',WB_HIGH_FALSE_TRIGGER_KEYS:'关键词会高频误触发',WB_ALL_KEYS_THREE_OR_MORE:'缺少二字关键词入口',WB_SINGLE_CHAR_KEY:'单字关键词会误触发',WB_TEMPLATE_TOKEN_IN_KEY_WITH_FALLBACK:'关键词占位符无效',WB_TEMPLATE_TOKEN_ONLY_KEYS:'全部关键词都是无效占位符',WB_DUPLICATE_ID:'世界书编号重复',WB_UNDERSIZED_DEFAULT_REJECT:'有效人物和世界正文不足',WB_SUPPORT_TEXT_DOMINATES:'辅助说明占比过高',WB_CONSTANT_OVERLOAD:'常驻内容严重过载',WB_OPENING_WORLD_STATE_CONFLICT:'开场与常驻状态冲突',WB_STAGE_ROUTE_NOT_PRIMED:'阶段入口尚未建立'};
+ function reference(card){return C.auditCard(card,{reviewOnlyCanPass:true});}
+ function finalFindings(card){
+  const d=card.data||card,m=F.measure(card),out=[];
+  if(d.extensions?.rp_studio?.profile!==F.bundle.policy.id)return out;
+  const add=(code,title,detail,entry)=>out.push({group:'quality',severity:'error',code,title,detail,entry});
+  if(m.effective<m.minimum)add('FULL_CARD_MINIMUM','有效世界书未达到卡型最低要求',`有效世界书 ${m.effective} / ${m.minimum} 字；辅助说明和重复段落不计入有效字数，请继续补齐人物、世界与玩法正文。`);
+  if(m.duplicate)add('FULL_CARD_DUPLICATE','世界书存在重复段落',`检测到 ${m.duplicate} 字重复正文，涉及：${m.duplicateTitles.join('；')}。逐项确认重复是否必要，保留各人物独立设定；改写重复部分后复检，不能关闭条目或删去独有事实。`);
+  for(const row of m.rows.filter(r=>!r.validCategory))add('FULL_CARD_CATEGORY','世界书分类缺失或计数不一致',`${row.title}：类目 ${row.category||'未分类'} 不属于当前卡型，或辅助说明被错误计入正文；请按条目实际用途分类。`);
+  return out;
+ }
+ Z.referenceAudit={version:C.VERSION,source:'过审助手V1.6免改网站一键防盗.html',sha256:'d92573bb2beeaead071f4281b1f4db3712b7fa6bc89972c5f6aa24545321e23a',run:reference,finalFindings};
+ Z.audit.runAll=function(card={}){
+  const result=old(card),a=reference(card);
+  // Keep reference review findings visible. Its UI explicitly lets review-only cards pass.
+  for(const f of a.findings){
+   const name=labels[f.code]||'过审助手人工复核',entry=f.entry;
+   result.submission.push({group:'submission',severity:f.level==='must_fix'?'error':'info',code:f.code,title:name,detail:(entry?'《'+entry.title+'》：':'')+f.evidence+(f.impact?'\n影响：'+f.impact:'')+(f.suggestion?'\n建议：'+f.suggestion:''),entry,field:f.field,sourcePath:f.sourcePath,referenceLevel:f.level,confidence:f.confidence});
+  }
+  result.submission.push({group:'submission',severity:'info',code:'REFERENCE_AUDIT_SUMMARY',title:'过审助手结构判定',detail:`${a.verdict} · 原版内核 ${C.VERSION} · 需修复 ${a.findings.filter(f=>f.level==='must_fix').length} 项 · 人工复核 ${a.findings.filter(f=>f.level==='review').length} 项。人工复核按助手原规则保留提示；目标平台仍需实际试玩。`});
+  result.quality.push(...finalFindings(card));return result;
+ };
+})();
+
 /* Repair metadata and structure from the current audit, preserving source prose. */
 (function(){
  'use strict';const Z=globalThis.Zaojing,F=Z.fullCard,clone=v=>JSON.parse(JSON.stringify(v));
@@ -3351,19 +4239,55 @@ keys 用玩家会自然说出的行为词，从该档自己的正文里长出来
   const introduced=Object.values(b.audit).flat().filter(f=>f.severity==='error'&&!old.has(issueKey(f)));
   const priorWarnings=new Set(Object.values(a.audit).flat().filter(f=>f.severity==='warning').map(issueKey)),introducedWarnings=Object.values(b.audit).flat().filter(f=>f.severity==='warning'&&!priorWarnings.has(issueKey(f)));
   const oldEntries=(before.data||before).character_book?.entries||[],nextEntries=(after.data||after).character_book?.entries||[];
-  const lost=oldEntries.filter(e=>live(e)&&String(e.content||'').trim()&&!nextEntries.some(n=>live(n)&&((e.id?n.id===e.id:Z.safety.keyOf(e)?Z.safety.keyOf(n)===Z.safety.keyOf(e):n===nextEntries[oldEntries.indexOf(e)]&&!Z.safety.keyOf(n))&&(preserveExact?String(n.content||'').includes(e.content):String(n.content||'').length>=String(e.content).length*.7)||e.id&&n.extensions?.rp_studio?.consolidatedSources?.some(s=>s.id===e.id&&String(n.content||'').includes(e.content)))));
+  const lost=oldEntries.filter(e=>{
+   if(!live(e)||!String(e.content||'').trim())return false;
+   const pieces=e.id?nextEntries.filter(n=>live(n)&&n.extensions?.rp_studio?.splitSource?.id===e.id).sort((a,b)=>a.extensions.rp_studio.splitSource.index-b.extensions.rp_studio.splitSource.index):[];
+   if(pieces.length&&pieces.length===pieces[0].extensions.rp_studio.splitSource.total&&pieces.every((n,i)=>n.extensions.rp_studio.splitSource.index===i)&&pieces.map(n=>n.content).join('')===e.content)return false;
+   return !nextEntries.some(n=>live(n)&&((e.id?n.id===e.id:Z.safety.keyOf(e)?Z.safety.keyOf(n)===Z.safety.keyOf(e):n===nextEntries[oldEntries.indexOf(e)]&&!Z.safety.keyOf(n))&&(preserveExact?String(n.content||'').includes(e.content):String(n.content||'').length>=String(e.content).length*.7)||e.id&&n.extensions?.rp_studio?.consolidatedSources?.some(s=>s.id===e.id&&String(n.content||'').includes(e.content))));
+  });
   const recognized=card=>{try{return F.previewDocument(card,(card.data||card).first_mes||'','repair-check').recognized;}catch(_){return false;}};const previewBefore=recognized(before),previewAfter=recognized(after),ma=F.measure(before),mb=F.measure(after),budgetRegression=ma.effective>=ma.minimum&&mb.effective<mb.minimum,duplicateRegression=mb.duplicate>ma.duplicate;
   return {before:a,after:b,introduced,introducedWarnings,lost,budgetRegression,duplicateRegression,previewRegression:previewBefore&&!previewAfter,improved:b.error<a.error||b.error===a.error&&b.warning<a.warning,acceptable:introduced.length===0&&introducedWarnings.length===0&&lost.length===0&&!budgetRegression&&!duplicateRegression&&!(previewBefore&&!previewAfter)&&b.error<=a.error&&b.warning<=a.warning};
  }
+ function installRoutingIndex(card,force=false){
+  if(!force&&!counts(card).audit.quality.some(f=>f.code==='REVIEW_INDEX_COVERAGE'))return false;
+  const entries=(card.data||card).character_book.entries,indexed=entries.filter(e=>live(e)&&!constant(e)&&(e.keys||[]).length);
+  if(!indexed.length)return false;
+  const labels={runtime:'运行规则',protocol:'运行协议',profile:'人物档案',play:'场景玩法',stage:'阶段机',token:'阶段令牌',character:'角色',world:'世界背景',location:'地点',event:'事件',relationship:'关系',mechanic:'玩法状态',clue:'线索',ending:'结局',support:'辅助'},groups=new Map();
+  for(const e of indexed){const label=labels[category(e)]||'其他',keys=groups.get(label)||new Set();for(const key of e.keys)keys.add(key);groups.set(label,keys);}
+  const text='根据本轮正在发生的对话与行动，仅调用相关条目；以下关键词按世界书类目分组，索引不代表内容已经发生。\n'+[...groups].map(([label,keys])=>'【'+label+'】\n'+[...keys].join('、')).join('\n');
+  const previous=entries.find(e=>live(e)&&constant(e)&&(e.id==='rp-studio-routing-index'||e.extensions?.rp_studio?.generatedRoutingIndex));
+  if(previous){if(previous.content.includes(text))return false;previous.content+='\n\n【更新调用索引】\n'+text;}
+  else entries.push({id:entries.some(e=>e.id==='rp-studio-routing-index')?crypto.randomUUID():'rp-studio-routing-index',comment:'世界书调用索引',content:text,keys:[],constant:true,enabled:true,position:'before_char',extensions:{rp_studio:{category:'support',generatedRoutingIndex:true}}});
+  return true;
+ }
+ function splitProfile(e){
+  if(String(e.content||'').length<=8000)return [e];
+  const text=e.content,parts=[];let start=0;
+  while(start<text.length){let end=Math.min(start+3500,text.length);if(end<text.length){const newline=text.lastIndexOf('\n',end),sentence=Math.max(text.lastIndexOf('。',end),text.lastIndexOf('；',end));const boundary=Math.max(newline,sentence);if(boundary>start+1000)end=boundary+1;}parts.push(text.slice(start,end));start=end;}
+  return parts.map((content,index)=>{const row=clone(e);row.id=index?crypto.randomUUID():e.id;row.comment=e.comment+'分册'+Z.displayNames.ordinal(index+1);row.content=content;row.keys=[];delete row.extensions.rp_studio.consolidatedSources;row.extensions.rp_studio.splitSource={id:e.id,index,total:parts.length};return row;});
+ }
  function prepare(input,{history=[]}={}){
-  const card=clone(input),d=card.data||card,m=F.meta(card),entries=d.character_book?.entries||[],report=[],managed=['meat','pipeline'].includes(m.cardKind);if(!managed)return {card,report,verification:assess(input,card),changed:false};
+  const card=clone(input),d=card.data||card,m=F.meta(card),entries=d.character_book?.entries||[],report=[],managed=['meat','pipeline'].includes(m.cardKind);if(!managed){if(installRoutingIndex(card))report.push({type:'index'});return {card,report,verification:assess(input,card,{preserveExact:true}),changed:JSON.stringify(card)!==JSON.stringify(input)};}
   // Recover text erased by old sparse-patch parsing; preserve the current enabled state.
   for(const e of entries){if(e.content||!e.id)continue;let prior;for(const h of [...history].reverse()){const q=(h.card?.data||h.card)?.character_book?.entries?.find(x=>x.id===e.id&&x.content);if(q){prior=q;break;}}if(prior){e.content=prior.content;report.push({type:'recover',id:e.id});}}
   for(const e of entries.filter(live)){
    const con=constant(e),p=e.extensions?.position??e.position;
-   if(con&&p==='at_depth'||!con&&['before_char','after_char'].includes(p)){e.position=con?'before_char':'at_depth';if(e.extensions&&Object.hasOwn(e.extensions,'position'))e.extensions.position=e.position;report.push({type:'position',id:e.id});}
+   if(con&&!['before_char','after_char'].includes(p)||!con&&p!=='at_depth'){e.position=con?'before_char':'at_depth';if(e.extensions&&Object.hasOwn(e.extensions,'position'))e.extensions.position=e.position;report.push({type:'position',id:e.id});}
    // Routing/index instructions belong to support, not a short independent scene.
    if(category(e)==='play'&&/兜底.*入口|入口.*兜底/.test(e.comment||'')&&!/【(?:即时反应|流程|玩法)】/.test(e.content||'')&&(e.content||'').length<700){e.extensions.rp_studio.category='support';report.push({type:'routing-category',id:e.id});}
+  }
+  const overloaded=counts(input).audit.quality.some(f=>['REVIEW_CONSTANT_OVERLOAD','REVIEW_CONSTANT_BUDGET','WB_CONSTANT_OVERLOAD'].includes(f.code));
+  if(overloaded){
+   const converted=[];
+   for(const e of entries){
+    if(live(e)&&constant(e)&&category(e)==='profile'){
+     e.constant=false;e.position='at_depth';e.scanDepth=2;e.depth??=4;
+     if(e.extensions){if(Object.hasOwn(e.extensions,'constant'))e.extensions.constant=false;if(Object.hasOwn(e.extensions,'position'))e.extensions.position='at_depth';}
+     const outside=JSON.stringify({...d,character_book:{...d.character_book,entries:entries.filter(n=>n!==e)}});
+     const parts=e.id&&!outside.includes(e.id)?splitProfile(e):[e];converted.push(...parts);report.push({type:'profile-trigger',id:e.id,parts:parts.length});
+    }else converted.push(e);
+   }
+   entries.splice(0,entries.length,...converted);
   }
   const blueprint=m.blueprint||{},foundation=[m.creativeBrief,d.description,d.scenario,...entries.filter(e=>live(e)&&['runtime','protocol','profile'].includes(category(e))).map(e=>e.content)].join('\n');
   if(Array.isArray(blueprint.playAnchors)&&F.playNoveltyGate(input).results.some(g=>g.severity==='error'&&g.detail.startsWith('玩法新度不足'))){
@@ -3422,13 +4346,14 @@ keys 用玩家会自然说出的行为词，从该档自己的正文里长出来
    if(!keys){const short=assigned.get(e);if(!short)continue;const secondary=pools.get(e).filter(w=>w!==short&&!used.has(w)).sort((a,b)=>score(e,b)-score(e,a)||b.length-a.length||a.localeCompare(b))[0];if(!secondary)continue;keys=[short,secondary];used.add(secondary);}
    if(JSON.stringify(keys)!==JSON.stringify(e.keys)){report.push({type:'keys',id:e.id,before:e.keys,after:keys});e.keys=keys;}
   }
+  if(installRoutingIndex(card,overloaded))report.push({type:'index'});
   Z.displayNames.cleanCard(card);const verification=assess(input,card,{preserveExact:true});
   return {card,report,verification,changed:JSON.stringify(card)!==JSON.stringify(input)};
  }
  function batch(card,findings,limit=3){
   limit=Math.max(1,Math.min(3,Number(limit)||3));
   const d=card.data||card,entries=d.character_book?.entries||[],ordered=[...findings].sort((a,b)=>(a.severity==='error'?0:1)-(b.severity==='error'?0:1));
-  const first=ordered[0],text=[first?.code,first?.title,first?.detail].join('\n'),purpose=/REGEX|正则/i.test(text)?'regex':/LOCAL_UI|界面|模板|UI_/i.test(text)?'ui':'lore',key=text.match(/key「([^」]+)」|关键词[“「]([^”」]+)[”」]/),matches=entries.filter(e=>live(e)&&((e.comment&&text.includes(e.comment))||(key&&(e.keys||[]).includes(key[1]||key[2]))));
+  const first=ordered[0],text=[first?.code,first?.title,first?.detail].join('\n'),purpose=/REGEX|正则/i.test(text)?'regex':/LOCAL_UI|界面|模板|UI_/i.test(text)?'ui':'lore',key=text.match(/key「([^」]+)」|关键词[“「]([^”」]+)[”」]/),matches=entries.filter(e=>live(e)&&((first?.entry?.index===entries.indexOf(e))||(e.comment&&text.includes(e.comment))||(key&&(e.keys||[]).includes(key[1]||key[2]))));
   if(!matches.length&&/玩法新度/.test(text)){const anchors=F.meta(card).blueprint?.playAnchors||[];matches.push(...entries.filter(e=>live(e)&&category(e)==='play'&&!anchors.some(a=>String(e.content||'').includes(a))));}
   const targets=(matches.length?matches:entries.filter(e=>live(e)&&!constant(e))).slice(0,limit),targetNames=new Set(targets.map(e=>e.comment));
   const rows=ordered.filter(f=>f===first||targets.some(e=>f.detail?.includes(e.comment)||f.title?.includes(e.comment))||key&&f.detail?.includes(key[1]||key[2])).slice(0,8);
@@ -3458,6 +4383,7 @@ keys 用玩家会自然说出的行为词，从该档自己的正文里长出来
  }
  Z.verifiedRepair={prepare,assess,counts,batch,uiSignature,assertBatch};
 })();
+
 
 /* Progress is separate from editable card data. Previews never call a model. */
 (function(){
@@ -4082,6 +5008,8 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
       if(badRows.length)blockers.push('非法类目 '+badRows.length+' 条：'+[...new Set(badRows.map(r=>r.category||'(空)'))].join('/')+'，本卡型允许 '+Z.fullCard.cardPlan(Z.fullCard.meta(candidate).cardKind||'regular').categories.concat('support').join('/'));
       const auditErrors=Object.values(checks).flat().filter(x=>x.severity==='error');
       if(auditErrors.length)blockers.push('审核 error '+auditErrors.length+' 项：'+auditErrors.slice(0,6).map(x=>x.code+'「'+(x.title||'')+'」：'+x.detail).join('；')+(auditErrors.length>6?'；其余问题请查看完整体检结果':''));
+      const auditWarnings=Object.values(checks).flat().filter(x=>x.severity==='warning');
+      if(auditWarnings.length)blockers.push('建议检查 '+auditWarnings.length+' 项：'+auditWarnings.slice(0,4).map(x=>x.title+'：'+x.detail).join('；'));
       if(blockers.length)throw Error('最低标准检查未通过（草稿已保留）：'+blockers.join(' · '));
       if(controller.signal.aborted||ws!==origin||streamController!==controller)throw new DOMException('已停止','AbortError');
       Object.assign(Z.fullCard.meta(candidate),{localValidation,coverOptional:true,phase:'卡片内容与 UI 已生成；封面可选，等待平台实际审核'});Z.workspace.saveCard(ws,candidate,'自动生成卡片（封面可选）');Z.workspace.persist(ws);renderWorkspace();
@@ -4093,7 +5021,7 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
     }catch(e){
       controller.abort();if(ws!==origin)return;
       const current=collectForm(),m=Z.fullCard.meta(current),hasCheckpoint=m.goal===goal&&Array.isArray(m.blueprint?.worldbookPlan),count=(current.data.character_book?.entries||[]).length;
-      const repairCount=Object.values(Z.audit.runAll(current)).flat().filter(x=>x.severity==='error').length;
+      const repairCount=Object.values(Z.audit.runAll(current)).flat().filter(x=>['error','warning'].includes(x.severity)).length;
       let saved=false,saveError='';
       if(hasCheckpoint){
         if(e.name!=='AbortError')m.lastGenerationError=e.message;
@@ -4146,7 +5074,7 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
       status.textContent=pendingDiff.changes.length?`Diff 已生成 · ${lastEvidence.effort} · 请审阅后应用`:'AI 没有提出可应用修改，请补充更具体的修改要求后重试。';renderDiffPreview();
     }catch(e){
       stopLive();
-      if(e.name==='AbortError'){setStep('request','fail');hideActivity();status.textContent='已停止；原卡保留，可以重试。';}
+      if(e.name==='AbortError'){setStep('request','fail');hideActivity();status.textContent='已停止；原卡保留，可以重试。';$('#diff-preview').innerHTML='<div class="empty"><b>本次请求已停止</b><p>原卡内容保留，可重新生成修改方案。</p><button type="button" class="secondary" data-action="generate-diff">重试生成修改方案</button></div>';}
       else{
         const step=pre.textContent?'parse':'request';setStep(step,'fail');
         status.textContent='生成失败：'+e.message;
@@ -4216,7 +5144,7 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
   }
 
   function renderAuditFinding(finding,index){const action=Z.auditFix.classifyFinding(finding),actionHtml=finding.severity==='info'?'':`<button type="button" class="secondary audit-fix-action" data-audit-fix="${index}" data-audit-mode="${action.mode}">${action.label}</button>`;return`<article class="finding ${finding.severity}"><span class="severity">${finding.severity==='error'?'需修复':finding.severity==='warning'?'建议检查':'提示'}</span><div class="finding-copy"><h2>${esc(finding.title)}</h2><p>${esc(finding.detail)}</p></div>${actionHtml}</article>`}
-  function renderAudit(snapshot){const current=collectForm(),rawAll=snapshot||Z.audit.runAll(current),all=Z.auditFix.decorateFindings(current,rawAll),repairPlan=Z.auditFix.batchPlan(all),localFixes=repairPlan.fixes,groups={runtime:'运行审核',quality:'质量审核',submission:'提交审核（过审规则）'},rows=Object.values(all).flat(),errors=rows.filter(x=>x.severity==='error').length,warnings=rows.filter(x=>x.severity==='warning').length,infos=rows.filter(x=>x.severity==='info').length,total=rows.length,entryCount=current.data?.character_book?.entries?.length||0;$$('[data-audit-tab]').forEach(x=>{const group=x.dataset.auditTab,count=all[group]?.length||0;x.classList.toggle('is-active',group===activeAuditTab);x.innerHTML=`${groups[group]} <span class="audit-count">${count?Z.auditGroups.group(all[group]).length+" 类 · "+count+" 处":"0"}</span>`});const summary=$('#audit-summary');if(summary)summary.innerHTML=`<section class="audit-summary-main" data-audit-verdict="${errors?'error':warnings?'warning':'pass'}"><h2>${lastAuditAt?(errors?'体检未通过':warnings?'体检仍有建议项':'本地体检通过'):'规则预检已加载'}</h2><p>${lastAuditAt?'执行时间：'+lastAuditAt.toLocaleTimeString('zh-CN',{hour12:false}):'点击“重新体检”会保存当前编辑并立即重新运行全部规则。'} · 已扫描 ${entryCount} 条世界书</p><button type="button" class="primary audit-fix-all" data-audit-fix-all ${repairPlan.findings.length?'':'disabled'}>${repairPlan.ai.length?`按体检修复（${repairPlan.findings.length}）`:(localFixes.length?`一键修复格式（${localFixes.length}）`:'暂无待修复项')}</button><p class="fine" data-audit-repair-note>${repairPlan.ai.length?`先保存快照并尝试本地结构修复；剩余问题分小批交给 AI，预检通过后审阅应用，每批实际复检。`:(localFixes.length?'直接修复格式字段，修改前自动保存快照。':'当前只有说明或未发现待修复问题。')}</p>${!errors&&!warnings?'<button type="button" class="secondary" data-action="export-json">导出已体检的 JSON 卡片</button>':''}</section><div class="audit-summary-stat ${errors?'has-error':''}"><b>${errors}</b><span>需修复</span></div><div class="audit-summary-stat ${warnings?'has-warning':''}"><b>${warnings}</b><span>建议检查</span></div><div class="audit-summary-stat"><b>${infos}</b><span>提示</span></div>`;const list=all[activeAuditTab]||[];$('#audit-results').innerHTML=list.length?Z.auditGroups.render(list):`<div class="empty"><h2>${total?'本分类未发现问题':'本次体检未发现已覆盖问题'}</h2><p>${total?'其他审核分类仍有 '+total+' 项，请查看上方带数字的标签。':'全部本地规则已经实际执行；这仍不是目标平台的绝对过审证明。'}</p></div>`;return{all,total,errors,warnings,infos,localFixes}}
+  function renderAudit(snapshot){const current=collectForm(),rawAll=snapshot||Z.audit.runAll(current),all=Z.auditFix.decorateFindings(current,rawAll),repairPlan=Z.auditFix.batchPlan(all),localFixes=repairPlan.fixes,groups={runtime:'运行审核',quality:'质量审核',submission:'提交审核（过审规则）'},rows=Object.values(all).flat(),errors=rows.filter(x=>x.severity==='error').length,warnings=rows.filter(x=>x.severity==='warning').length,infos=rows.filter(x=>x.severity==='info').length,total=rows.length,entryCount=current.data?.character_book?.entries?.length||0;$$('[data-audit-tab]').forEach(x=>{const group=x.dataset.auditTab,count=all[group]?.length||0;x.classList.toggle('is-active',group===activeAuditTab);x.innerHTML=`${groups[group]} <span class="audit-count">${count?Z.auditGroups.group(all[group]).length+" 类 · "+count+" 处":"0"}</span>`});const summary=$('#audit-summary');if(summary)summary.innerHTML=`<section class="audit-summary-main" data-audit-verdict="${errors?'error':warnings?'warning':'pass'}"><h2>${lastAuditAt?(errors?'体检未通过':warnings?'体检仍有建议项':'本地体检通过'):'规则预检已加载'}</h2><p>${lastAuditAt?'执行时间：'+lastAuditAt.toLocaleTimeString('zh-CN',{hour12:false}):'点击“重新体检”会保存当前编辑并立即重新运行全部规则。'} · 已扫描 ${entryCount} 条世界书</p><p class="fine" data-reference-audit>对齐过审助手 V1.6 · 原版审核内核 ${Z.referenceAudit.version}；卡型字数与关键词闸门同时检查。</p><button type="button" class="primary audit-fix-all" data-audit-fix-all ${repairPlan.findings.length?'':'disabled'}>${repairPlan.ai.length?`按体检修复（${repairPlan.findings.length}）`:(localFixes.length?`一键修复格式（${localFixes.length}）`:'暂无待修复项')}</button><p class="fine" data-audit-repair-note>${repairPlan.ai.length?`先保存快照并尝试本地结构修复；剩余问题分小批交给 AI，预检通过后审阅应用，每批实际复检。`:(localFixes.length?'直接修复格式字段，修改前自动保存快照。':'当前只有说明或未发现待修复问题。')}</p>${!errors&&!warnings?'<button type="button" class="secondary" data-action="export-json">导出已体检的 JSON 卡片</button>':''}</section><div class="audit-summary-stat ${errors?'has-error':''}"><b>${errors}</b><span>需修复</span></div><div class="audit-summary-stat ${warnings?'has-warning':''}"><b>${warnings}</b><span>建议检查</span></div><div class="audit-summary-stat"><b>${infos}</b><span>提示</span></div>`;const list=all[activeAuditTab]||[];$('#audit-results').innerHTML=list.length?Z.auditGroups.render(list):`<div class="empty"><h2>${total?'本分类未发现问题':'本次体检未发现已覆盖问题'}</h2><p>${total?'其他审核分类仍有 '+total+' 项，请查看上方带数字的标签。':'全部本地规则已经实际执行；这仍不是目标平台的绝对过审证明。'}</p></div>`;return{all,total,errors,warnings,infos,localFixes}}
   function runAuditNow(){const raw=collectForm();Z.workspace.saveCard(ws,raw,'体检前保存');Z.workspace.persist(ws);lastAuditAt=new Date();const checks=Z.audit.runAll(raw);activeAuditTab=['submission','runtime','quality'].find(group=>checks[group]?.some(f=>f.severity==='error'))||'submission';const result=renderAudit(checks);navigate('audit');toast(result.total?`体检完成：${result.errors} 项需修复，${result.warnings} 项建议检查`:'体检完成：已覆盖规则中未发现问题')}
   function setupModelSelect(){const old=$('#api-model');if(!old)return;const select=document.createElement('select');select.id='api-model-select';select.disabled=true;select.innerHTML='<option value="">请先读取模型</option>';old.replaceWith(select);$('[data-action="test-api"]').textContent='读取模型'}
   function syncModelControls(ids=Z.modelControl.readCache(localStorage),selected=settings().model){const cached=Z.modelControl.normalizeModels(ids),models=Z.modelControl.normalizeModels([...cached,selected]),active=models.includes(selected)?selected:(models[0]||'');$$('[data-model-scope],#api-model-select').forEach(select=>{select.innerHTML=models.map(id=>`<option value="${esc(id)}">${esc(id)}</option>`).join('')||'<option value="">请先读取模型</option>';select.disabled=!models.length;select.value=active});$$('.model-read-shortcut').forEach(button=>button.hidden=Boolean(cached.length));return active}
@@ -4262,7 +5190,7 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
     if(x==='export-json'||x==='export-png'){
       const candidate=collectForm(),allFindings=Object.values(Z.audit.runAll(candidate)).flat(),blockers=allFindings.filter(x=>x.severity==='error');
       const profile=candidate.data?.extensions?.rp_studio, m=Z.fullCard.measure(candidate);
-      const invalidWorldbook=profile?.profile===Z.fullCard.bundle.policy.id&&(m.effective<m.minimum||m.duplicate||m.rows.some(r=>!r.validCategory));
+      const invalidWorldbook=Z.referenceAudit.finalFindings(candidate).length>0;
       if(blockers.length||invalidWorldbook)return toast(`质检台未全绿：${blockers.length||1} 项需修复（首个：${blockers[0]?blockers[0].title+'——'+String(blockers[0].detail).slice(0,60):'世界书字数/分类'}）；点「重新体检」查看全部`);
     }
     if(x==='export-json'){save('导出前保存');download(Z.card.exportJson(Z.fullCard.stamp(ws.card)),(normalized().name||'角色卡')+'.json','application/json')}
