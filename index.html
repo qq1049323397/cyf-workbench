@@ -1133,7 +1133,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   const WORKBENCH_VERSION='1.2.10';
   /* 构建戳：由 tools/sync-site.sh 在同步时自动改写成「日期.sha」，手改这里没有意义。
      它存在的理由就是版本号看不出来的那件事——线上跑的到底是哪一次构建。 */
-  const WORKBENCH_BUILD='2026.10.15.5360f98';
+  const WORKBENCH_BUILD='2026.10.15.fefa2d5';
   const WORKBENCH_RELEASE={"title":"质检台对齐过审助手，修复生成与出卡流程","notes":["质检台接入指定《过审助手V1.6》的原版 2.5.0 审核核心：补齐关键词入口、插入深度、常驻过载、开场状态冲突等检查，原版人工复核提示完整保留。","体检、生成完成检查与导出条件同步；不足八万字、重复正文、错误分类会在体检台列明，避免显示绿色却不能导出。最终检查仍有错误或建议时，保留草稿并提供修复入口。","修复确认创意后卡住的问题；常规卡、肉卡、流水线卡与三种呈现模式均重新验证。人物档案按需触发，可选阶段跳过后的预算补到玩法，八万字要求保持。","旧卡适配常驻预算时保留正文，长档案按原文分册并补调用索引；修正展示协议的位置和流水线变量模式指令，改中文显示名称继续保留正则预览。","恢复停止 Diff 请求后的重试按钮；修复方案按小批复检，拒绝新增问题、正文丢失、无效修改和预览退化。此公告替换旧公告，刷新前先保存工程。"]};
   /* 注意：工厂函数里没有 root 这个变量（root 只是外层 IIFE 的参数），必须用 globalThis。 */
   try{globalThis.Zaojing=globalThis.Zaojing||{};globalThis.Zaojing.version=WORKBENCH_VERSION;globalThis.Zaojing.build=WORKBENCH_BUILD;globalThis.Zaojing.releaseNotes=WORKBENCH_RELEASE;}catch(_){ }
@@ -4353,7 +4353,7 @@ keys 用玩家会自然说出的行为词，从该档自己的正文里长出来
  function batch(card,findings,limit=3){
   limit=Math.max(1,Math.min(3,Number(limit)||3));
   const d=card.data||card,entries=d.character_book?.entries||[],ordered=[...findings].sort((a,b)=>(a.severity==='error'?0:1)-(b.severity==='error'?0:1));
-  const first=ordered[0],text=[first?.code,first?.title,first?.detail].join('\n'),purpose=/REGEX|正则/i.test(text)?'regex':/LOCAL_UI|界面|模板|UI_/i.test(text)?'ui':'lore',key=text.match(/key「([^」]+)」|关键词[“「]([^”」]+)[”」]/),matches=entries.filter(e=>live(e)&&((first?.entry?.index===entries.indexOf(e))||(e.comment&&text.includes(e.comment))||(key&&(e.keys||[]).includes(key[1]||key[2]))));
+  const first=ordered[0],text=[first?.code,first?.title,first?.detail].join('\n'),loreFinding=/^(?:WB_|MEAT_GATE_|PIPELINE_GATE_|FULL_CARD_)|LORE_REGEX/.test(first?.code||''),purpose=loreFinding?'lore':/REGEX|正则/i.test(text)?'regex':/LOCAL_UI|界面|模板|UI_/i.test(text)?'ui':'lore',key=text.match(/key「([^」]+)」|关键词[“「]([^”」]+)[”」]/),matches=entries.filter(e=>live(e)&&((first?.entry?.index===entries.indexOf(e))||(e.comment&&text.includes(e.comment))||(key&&(e.keys||[]).includes(key[1]||key[2]))));
   if(!matches.length&&/玩法新度/.test(text)){const anchors=F.meta(card).blueprint?.playAnchors||[];matches.push(...entries.filter(e=>live(e)&&category(e)==='play'&&!anchors.some(a=>String(e.content||'').includes(a))));}
   const targets=(matches.length?matches:entries.filter(e=>live(e)&&!constant(e))).slice(0,limit),targetNames=new Set(targets.map(e=>e.comment));
   const rows=ordered.filter(f=>f===first||targets.some(e=>f.detail?.includes(e.comment)||f.title?.includes(e.comment))||key&&f.detail?.includes(key[1]||key[2])).slice(0,8);
