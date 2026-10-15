@@ -305,9 +305,20 @@ function isFragment(k,title=''){
 function naturalKey(entry,key){const title=String(entry.comment||entry.name||'');return !isFragment(key,title)&&(title.includes(key)||synonyms.some(r=>title.includes(r.head)&&r.words.includes(key))||entry.extensions?.rp_studio?.restoredNaturalKeys?.includes(key));}
 function keyCount(entry){return ['profile','character','token','stage'].includes(entry.extensions?.rp_studio?.category)?{min:2,target:2,max:10}:{min:2,target:5,max:10};}
 function cleanKeys(value){const a=Array.isArray(value)?value:String(value||'').split(/[,，、;；\n]/);return [...new Set(a.map(x=>String(x||'').trim()).filter(x=>x&&x.length<=20&&!/[。！？!?；;\n]/.test(x)&&!/{{[^}]+}}/.test(x)))].slice(0,10);}
-function evaluate(entry){const keys=cleanKeys(entry.keys),plain=keys.filter(k=>!isToken(k)),issues=[],limits=keyCount(entry),title=entry.comment||entry.name||'';
+/* ctx.firstMes 传开场白原文时，历史自然入口按「能不能进首轮」分两栏：
+   不在开场白里的可以直接捡回来；在开场白里的，加了会把首轮拉取顶过预算，本批不能用。
+   ctx.firstMes 是可选参数，不传就保持原来的单栏写法。 */
+function evaluate(entry,ctx={}){const keys=cleanKeys(entry.keys),plain=keys.filter(k=>!isToken(k)),issues=[],limits=keyCount(entry),title=entry.comment||entry.name||'';
  if(entry.constant||!plain.length)return {keys,issues,limits};
- const fragments=plain.filter(k=>isFragment(k,title));if(fragments.length)issues.push({severity:'error',code:'KEY_FRAGMENT',detail:'关键词是无指向词或正文残片：'+fragments.join('、')+(entry.extensions?.rp_studio?.pendingNaturalKeys?.length?'。历史自然入口：'+entry.extensions.rp_studio.pendingNaturalKeys.join('、')+'；恢复全部会造成首轮过载，请用完整自然的情境短语并审阅。':'')});
+ const fragments=plain.filter(k=>isFragment(k,title));
+ if(fragments.length){
+  const pending=cleanKeys(entry.extensions?.rp_studio?.pendingNaturalKeys),firstMes=String(ctx.firstMes||''),cand=pending.filter(k=>!isFragment(k,title)&&!MIS_TRIGGER.has(k)),blocked=firstMes?cand.filter(k=>firstMes.includes(k)):[],usable=cand.filter(k=>!blocked.includes(k));
+  let detail='关键词是无指向词或正文残片：'+fragments.join('、')+'。';
+  if(usable.length)detail+='可直接恢复：'+usable.join('、')+'。';
+  if(blocked.length)detail+='以下词在开场白里，本批不能用（加了会把首轮拉取顶过上限）：'+blocked.join('、')+'。';
+  detail+='请用本条剧情里玩家会自然说出的情境短语替换，不要用正文碎片。';
+  issues.push({severity:'error',code:'KEY_FRAGMENT',detail});
+ }
  if(plain.length<limits.target)issues.push({severity:'info',code:'KEY_COVERAGE',detail:'当前 '+plain.length+' 个入口，建议补到 '+limits.target+'–10 个自然说法；保留已有关键词，补同义词和相关动作。'});
  return {keys,issues,limits};
 }
@@ -316,14 +327,50 @@ const synonyms=[
  ['关店','关店 打烊 收摊 锁店门 书店关门'],['煮面','煮面 阳春面 卧蛋 下面条 做碗面'],['下雨','下雨天 雨伞 淋湿 淋雨 避雨'],['停电','停电 蜡烛 跳闸 没电 电闸'],['借书','借书 还书 借书卡 借本书 办借书证'],['牵手','牵手 拉手 握手 十指相扣 牵住她'],['涂药','涂药 上药 药膏 擦药 换药'],['吹头发','吹头发 吹干头发 吹头 吹风机 擦头发'],['菜市场','菜市场 买菜 挑菜 逛菜场 菜篮子'],['发烧','发烧 退烧 买药 体温计 量体温'],['医院','医院 挂号 看病 门诊 候诊'],['便利店','便利店 买烟 关东煮 夜间小店 逛便利店'],['地铁','地铁 末班车 地铁站 赶车 末班地铁'],['搬书','搬书 整理书架 书架 腰闪 搬书箱'],['相册','相册 老照片 旧照片 翻相册 合影'],['剪指甲','剪指甲 指甲刀 修指甲 指甲钳 帮剪指甲'],['吃醋','吃醋 醋意 嫉妒 不高兴 误会'],['靠肩','靠肩 靠一下 靠肩膀 眯一会儿 借肩膀'],['装修','装修 电钻 楼上施工 钻墙 噪音'],['教师节','教师节 贺卡 以前的学生 节日祝福 教师节礼物']
 ].map(([head,words])=>({head,words:words.split(' ')}));
 function characterNames(card){const d=card.data||card,meta=d.extensions?.rp_studio||{},declared=(Array.isArray(meta.blueprint?.characters)?meta.blueprint.characters:[]).map(x=>x.name).filter(x=>/^[\p{Script=Han}]{2,4}$/u.test(x));if(declared.length)return [...new Set(declared)];const m=String(d.description||'').match(/^\s*(?:【)?([\p{Script=Han}]{2,4})(?=[，,（(：:])/u);return m&&/^[赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦尤许何吕施张孔曹严华金魏陶姜戚谢邹窦章云苏潘葛奚范彭郎鲁韦昌马苗方任袁柳唐费薛雷贺倪汤殷罗毕郝安常傅顾孟黄和萧尹姚邵汪祁毛禹狄米贝明臧成戴宋茅庞熊纪舒项祝董梁杜阮蓝闵席季麻强贾路娄危江童颜郭梅盛林刁钟徐邱骆高夏蔡田胡霍万卢莫房解应丁宣邓洪石崔龚程陆翁].[\p{Script=Han}]{0,2}$/u.test(m[1])?[m[1]]:[];}
-function supplement(entry,occupied=new Set()){
+function keyCandidates(entry){const title=String(entry.comment||entry.name||'');return [title,...synonyms.filter(r=>title.includes(r.head)).flatMap(r=>r.words)];}
+/* opts.avoid 为真时，跳过 opts.avoidText（一般是开场白正文）里出现的词。
+   开场白里的词本来就是最自然的入口，只有首轮名额不够了才需要让路，
+   所以这个过滤默认关着，由调用方按当前密度决定要不要打开。 */
+function supplement(entry,occupied=new Set(),opts={}){
  const old=Array.isArray(entry.keys)?[...entry.keys]:[],limits=keyCount(entry),title=String(entry.comment||entry.name||''),a=[...old];
  if(entry.constant||old.some(isToken))return old;
- const candidates=[title,...synonyms.filter(r=>title.includes(r.head)).flatMap(r=>r.words)];
- for(const k of candidates){if(a.length>=limits.target)break;if(!/^[\p{L}\p{N}]{2,6}$/u.test(k)||isFragment(k,title)||MIS_TRIGGER.has(k)||occupied.has(k)||a.includes(k))continue;a.push(k);occupied.add(k);}
+ const avoidText=opts.avoid?String(opts.avoidText||''):'';
+ for(const k of keyCandidates(entry)){if(a.length>=limits.target)break;if(!/^[\p{L}\p{N}]{2,6}$/u.test(k)||isFragment(k,title)||MIS_TRIGGER.has(k)||occupied.has(k)||a.includes(k))continue;if(avoidText&&avoidText.includes(k))continue;a.push(k);occupied.add(k);}
  return a;
 }
-const keyPolicy={min:2,max:10,sceneTarget:5,isToken,isFragment,evaluate,clean:cleanKeys,supplement,limits:keyCount,naturalKey,characterNames,prompt:'人物主题通常 2–4 个入口；场景、事件和难触发条目 5–10 个自然关键词，单条最多 10 个、长度 2–6 字，至少一个二字入口。保留自然旧键，补玩家会说的同义词、标题专名和动作情境；禁止正文碎片、无指向虚词。角色名只用于人物总档或索引，不得全卡每条都放同一个角色名；现有全卡共用限制保持。'};
+/* 首轮名额：再拉一条（按 extraChars 字算）会不会把闸10 顶成 error。
+   条目本来就已被首轮拉到时不用问这个——多给几个键不增加条数。 */
+function firstTurnOverload(dens,extraChars=0){const v=verdictOf((dens?.totalCount||0)+1,(dens?.totalChars||0)+extraChars);return v==='过高'||v==='病态';}
+/* 本地修复入口条目的关键词：删掉碎片键，再从「历史自然入口 / 标题 / 标题切分词 / 同义词表」补合格词。
+   候选分两轮：先补开场白里没有的词（它们不增加首轮拉取条数，任何名额下都能用），
+   首轮名额还有余量时才动用开场白里的词。
+   一个合格词都凑不出来就原样返回（碎片键留着、错误继续报出来），交给 AI Diff 流程，
+   绝不把碎片键当成「已经修好」悄悄放回去。 */
+function repairKeys(entry,opts={}){
+  const raw=Array.isArray(entry.keys)?[...entry.keys]:[],title=String(entry.comment||entry.name||''),limits=keyCount(entry);
+  if(entry.constant||raw.some(isToken))return raw;
+  const occupied=opts.occupied instanceof Set?opts.occupied:new Set(opts.occupied||[]);
+  const firstMes=String(opts.firstMes||''),budgetFull=opts.budgetFull===true;
+  const a=raw.filter(k=>!isFragment(k,title));
+  const pending=cleanKeys(entry.extensions?.rp_studio?.pendingNaturalKeys);
+  /* 纯中文标题没有分隔符，按分隔符切只会切出它自己。
+     它的头两个字和尾两个字通常就是玩家会说的说法（拾光书店 → 拾光 / 书店），补上这两个。 */
+  const split=[...new Set([...title.split(/[^\p{L}\p{N}]+/u),...(title.length>=3&&title.length<=6?[title.slice(0,2),title.slice(-2)]:[])])].filter(w=>w.length>=2&&w.length<=6);
+  const pool=[...new Set([...pending,title,...split,...synonyms.filter(r=>title.includes(r.head)).flatMap(r=>r.words),...(opts.extra||[])])];
+  const bad=k=>!k||!/^[\p{L}\p{N}]{2,6}$/u.test(k)||a.includes(k)||isFragment(k,title)||MIS_TRIGGER.has(k)||occupied.has(k);
+  for(const k of pool){if(a.length>=limits.target)break;if(bad(k)||firstMes.includes(k))continue;a.push(k);}
+  /* 开场白里的词只在「一个合格词都没有」或「凑不出二字键」时动用。
+     为了补足到 target 而多拉一条条目进首轮，不划算。 */
+  if(!budgetFull)for(const k of pool){if(a.length&&a.some(k=>k.length===2))break;if(bad(k)||!firstMes.includes(k))continue;a.push(k);}
+  if(!a.length)return raw;
+  if(!a.some(k=>k.length===2)){const two=pool.find(k=>k&&k.length===2&&!bad(k)&&(!budgetFull||!firstMes.includes(k)));if(two)a.push(two);}
+  /* 修完必须仍然是一条合格条目：至少 2 个键、且至少一个二字键。
+     凑不齐就原样交回给 AI Diff——把条目修成「1 个键、没有二字键」的半成品，
+     只是拿 KEY_FRAGMENT 换两个新的 KEY 规范错误，比不修还糟。 */
+  if(a.length<2||!a.some(k=>k.length===2))return raw;
+  return a;
+}
+const keyPolicy={min:2,max:10,sceneTarget:5,isToken,isFragment,evaluate,clean:cleanKeys,supplement,candidates:keyCandidates,repair:repairKeys,limits:keyCount,naturalKey,characterNames,prompt:'人物主题通常 2–4 个入口；场景、事件和难触发条目 5–10 个自然关键词，单条最多 10 个、长度 2–6 字，至少一个二字入口。保留自然旧键，补玩家会说的同义词、标题专名和动作情境；禁止正文碎片、无指向虚词。角色名只用于人物总档或索引，不得全卡每条都放同一个角色名；现有全卡共用限制保持。'};
 const anchorStops=new Set('凌晨 一次 一碗 一半 手写 慢慢 关店 睡觉 点醒'.split(' '));
 const segmenter=new Intl.Segmenter('zh',{granularity:'word'});
 function anchorTerms(anchor,background){
@@ -336,8 +383,24 @@ function anchorTerms(anchor,background){
 function validateAnchorDesign(obj){const d=obj.data||obj,anchors=obj.blueprint?.playAnchors||[],text=String(d.description||'')+'\n'+String(d.first_mes||'');const invalid=anchors.filter(a=>!/^[\p{Script=Han}\d]{2,6}$/u.test(a)||/不给|只拉|没退|慢慢来|醒一次|关店|睡觉/.test(a)||!text.includes(a));if(invalid.length)throw Error('玩法锚点必须是简介或开场中已有的 2–6 字专名或名词，不能用整句：'+invalid.join('、'));return anchors;}
 function resolveAnchors(card){const d=card.data||card,entries=d.character_book?.entries||[],m=cardMeta(card),background=[d.description,d.first_mes,d.scenario,d.personality,m.creativeBrief,...entries.filter(e=>enabled(e)&&['profile','runtime','protocol','character','world'].includes(e.extensions?.rp_studio?.category)).map(e=>e.content)].filter(Boolean).join('\n');return (m.blueprint?.playAnchors||[]).map(label=>({label,terms:anchorTerms(label,background)}));}
 function matchesAnchor(text,resolved){return resolved.some(a=>a.terms.some(t=>String(text||'').includes(t)));}
-function verdictOf(totalCount){return totalCount>=30?'病态':totalCount>=10?'过高':totalCount>=7?'可接受':'健康';}
-function probeDensity(card,turnText){const d=card.data||card,live=(d.character_book?.entries||[]).filter(enabled),con=live.filter(e=>e.constant===true||e.extensions?.constant===true),trig=live.filter(e=>!(e.constant===true||e.extensions?.constant===true)),text=String(turnText??d.first_mes??''),detail=[];for(const e of trig){const hit=(e.keys||[]).filter(k=>!isToken(k)&&k.length>=2&&text.toLocaleLowerCase().includes(k.toLocaleLowerCase()));if(hit.length)detail.push({comment:e.comment||'(未命名)',chars:cjk(e.content),hit});}const constChars=con.reduce((n,e)=>n+cjk(e.content),0),pulledChars=detail.reduce((n,e)=>n+e.chars,0),totalCount=con.length+detail.length;return {constCount:con.length,constChars,pulledCount:detail.length,pulledChars,totalCount,totalChars:constChars+pulledChars,verdict:verdictOf(totalCount),detail};}
+/* ── 闸10 首轮拉取预算 ──────────────────────────────────────────────
+   条数基准沿用 5-6 健康 / 7-8 可接受 / 10+ 过高 / 30+ 病态。
+   字数口径与闸6 的常驻目标预算同量级：首轮一次性注入超过 12500 字就够呛。
+   判定模式（由用户拍板，改这一个常量就能换档）：
+     'count' = A 档：条数到 10 就算 error，字数只写进说明里。
+     'both'  = B 档：条数与字数都超标才算 error；只超条数的降为 warning。
+   B 只放宽 10–29 条这一档；30 条以上照旧直接判病态，保留硬停。 */
+const FIRST_TURN={countOk:7,countHigh:10,countPath:30,charsHigh:12500};
+const DENSITY_MODE='both';
+function verdictOf(totalCount,totalChars=0){
+  const countOver=totalCount>=FIRST_TURN.countHigh;
+  const both=DENSITY_MODE==='both'?totalChars>=FIRST_TURN.charsHigh:true;
+  if(countOver&&both)return totalCount>=FIRST_TURN.countPath?'病态':'过高';
+  if(totalCount>=FIRST_TURN.countPath)return '病态';
+  if(totalCount>=FIRST_TURN.countOk)return '可接受';
+  return '健康';
+}
+function probeDensity(card,turnText){const d=card.data||card,live=(d.character_book?.entries||[]).filter(enabled),con=live.filter(e=>e.constant===true||e.extensions?.constant===true),trig=live.filter(e=>!(e.constant===true||e.extensions?.constant===true)),text=String(turnText??d.first_mes??''),detail=[];for(const e of trig){const hit=(e.keys||[]).filter(k=>!isToken(k)&&k.length>=2&&text.toLocaleLowerCase().includes(k.toLocaleLowerCase()));if(hit.length)detail.push({comment:e.comment||'(未命名)',chars:cjk(e.content),hit});}const constChars=con.reduce((n,e)=>n+cjk(e.content),0),pulledChars=detail.reduce((n,e)=>n+e.chars,0),totalCount=con.length+detail.length;return {constCount:con.length,constChars,pulledCount:detail.length,pulledChars,totalCount,totalChars:constChars+pulledChars,verdict:verdictOf(totalCount,constChars+pulledChars),detail,mode:DENSITY_MODE,limits:{...FIRST_TURN}};}
   function keywordGates(card){
     const d=card.data||card, entries=(d.character_book||{}).entries||[], out=[];
     const kind=d.extensions&&d.extensions.rp_studio&&d.extensions.rp_studio.cardKind;
@@ -411,7 +474,7 @@ if (dens.verdict === '病态') {
 } else if (dens.verdict === '过高') {
   push(10, 'error', `单轮拉取 ${dens.totalCount} 条 / ${dens.totalChars} 字（过高）：常驻 ${dens.constCount} 条 ${dens.constChars} 字 + 命中 ${dens.pulledCount} 条 ${dens.pulledChars} 字`);
 } else if (dens.verdict === '可接受') {
-  push(10, 'warning', `单轮拉取 ${dens.totalCount} 条 / ${dens.totalChars} 字（可接受但偏高）`);
+  push(10, 'warning', `单轮拉取 ${dens.totalCount} 条 / ${dens.totalChars} 字（可接受但偏高${dens.totalCount >= FIRST_TURN.countHigh ? `：条数已达 ${dens.totalCount} 条，但字数没超 ${FIRST_TURN.charsHigh}，B 档只警告不拦卡` : ''}）`);
 }
 /* ── 预算表（逐字对应工作台 PIPELINE_PLAN / MEAT_PLAN）─────────────── */
 const PLAN = {
@@ -473,7 +536,15 @@ for (const e of live.filter((x) => catOf(x) === 'play')) {
   if (n < PLAY_MIN) push(11, 'warning', `${title}：${n} 字，低于玩法条目下限 ${PLAY_MIN}`);
   if (n > PLAY_MAX) push(11, 'error', `${title}：${n} 字，超玩法条目上限 ${PLAY_MAX}；8 万字应靠加条目达成，不要拉长单条`);
 }
-    for(const e of trig)for(const f of keyPolicy.evaluate(e).issues)out.push({gate:8,severity:f.severity,detail:(e.comment||e.name||'(未命名)')+'：'+f.detail});
+    /* 开场白里的词，只有「加了真会把首轮顶过上限」时才算本批不能用。
+       条目已经在首轮里、或加完之后仍在可接受档，就照常列成可直接恢复的入口——
+       否则文案会说「不能用」，本地修复却照着加了，两边自相矛盾。 */
+    const pulledNow=new Set(dens.detail.map(h=>h.comment)),firstMes=String(d.first_mes||'');
+    for(const e of trig){
+      const title=e.comment||e.name||'(未命名)';
+      const ctx=!pulledNow.has(title)&&firstTurnOverload(dens,cjk(e.content))?{firstMes}:{};
+      for(const f of keyPolicy.evaluate(e,ctx).issues)out.push({gate:8,severity:f.severity,detail:title+'：'+f.detail});
+    }
     return {results:out,seeded,tokenEntries,totalKeys:owners.size,conChars:dens.constChars,densCount:dens.totalCount,densChars:dens.totalChars};
   }
   function playNoveltyGate(card){
@@ -535,7 +606,7 @@ for (const e of live.filter((x) => catOf(x) === 'play')) {
     return {results:out,playCount:plays.length,anchorHit,anchorTotal:anchors.length,coverage,resolvedAnchors:resolved};
   }
 
-return {keyPolicy,MIS_TRIGGER,PROBABILITY_MAX,keywordGates,playNoveltyGate,probeDensity,verdictOf,anchorTerms,validateAnchorDesign,resolveAnchors,anchorHit:matchesAnchor};
+return {keyPolicy,MIS_TRIGGER,PROBABILITY_MAX,keywordGates,playNoveltyGate,probeDensity,verdictOf,FIRST_TURN,DENSITY_MODE,keyCandidates,repairKeys,firstTurnOverload,anchorTerms,validateAnchorDesign,resolveAnchors,anchorHit:matchesAnchor};
 });
 </script>
 <!-- CYF_QUALITY_RULES_END -->
@@ -1411,11 +1482,11 @@ return {keyPolicy,MIS_TRIGGER,PROBABILITY_MAX,keywordGates,playNoveltyGate,probe
      改版本时只改这一处，然后跑 tools/package.sh 重新打包。
      格式必须严格是 x.y.z——tools/asserts/version.js 用 /^\d+\.\d+\.\d+$/ 校验，
      所以构建戳不能拼在这里，只能放下面的 WORKBENCH_BUILD。 */
-  const WORKBENCH_VERSION='1.3.0';
+  const WORKBENCH_VERSION='1.3.1';
   /* 构建戳：由 tools/sync-site.sh 在同步时自动改写成「日期.sha」，手改这里没有意义。
      它存在的理由就是版本号看不出来的那件事——线上跑的到底是哪一次构建。 */
-  const WORKBENCH_BUILD='2026.10.15.0fef52d';
-  const WORKBENCH_RELEASE={"title":"关键词与质检修复重构：旧工程可继续修复","notes":["关键词保留自然说法，不再自动替换成正文碎片；人物主题通常 2–4 个入口，场景、事件和难触发条目建议 5–10 个，单条最多 10 个。现有关键词共用限制保持。","增加“本地修复结构与入口（不请求 AI）”：导入完整旧工程后，依据工程历史恢复被旧版改坏的关键词、补自然入口，并合并重复状态令牌；保留独有正文和修改前快照。恢复会造成开场过载的入口留给审阅，不强行放行。","玩法锚点按有设定依据的核心名词判断，不再要求逐字写出整句；覆盖至少 80% 的阈值保持。新卡在基础设计阶段验证锚点。","分批修复按真实覆盖数、自然入口和首轮密度进展判断，不再要求三个条目一次消除全卡问题；有限的非关键建议允许随净进展出现，新增错误、死键、正文丢失和预览退化仍拦截。","同一路径的多项 Diff 顺序合并，所有勾选修改都会保留；支持撤销及复用已有模型 JSON 重新预检，无需重复请求 AI。下一批自动定位剩余问题。","工作台与离线关键词、密度检查共用规则；体检显示当前编辑卡和常驻条数，避免与历史快照混淆。","保留过审助手 V1.6 原版内核；有发射位的状态令牌和 probability≤60 概率入口按已核实的运行时规则复核，差异逐项说明。概率 100 不豁免；概率触发可能漏轮。","请求失败或预检结束会明确停止计时、保留草稿及最后输出，显示继续修复入口。本次公告替换旧公告，未发布的 1.2.11 修复一并收入 1.3.0。"]};
+  const WORKBENCH_BUILD='2026.10.15.25e662d';
+  const WORKBENCH_RELEASE={"title":"本地修复不再空转：导入旧工程就能一路修到零错误","notes":["恢复被旧版改坏的历史入口时也守首轮名额：以前「把几十条被改坏的入口一次性全捡回来」会当场把首轮拉取顶超限，方案被自己的复检拒掉，按钮就变成「点了没反应」。现在名额不够的条目只恢复不在开场白里的词，凑不出合格入口的整条原样留给 AI Diff。（76 条原始旧工程：本地修复 22 条错误 → 1 条，全程没碰模型。）","本地修键不再把条目修成半成品：删掉正文残片后如果凑不出合格入口（至少两个键、至少一个二字键），条目就原样交回 AI Diff，不再拿一个残片换两个新错误。","纯中文标题也能切出二字入口（拾光书店 → 拾光／书店）。导入旧工程后点「本地修复结构与入口」，二字键由工作台自己补齐，不必再等模型。","首轮拉取超限时，工作台会先把开场白里的词从本批改动里自动摘掉再复检；摘不掉就直说「首轮拉取从 N 条涨到 M 条、是哪个词、上限多少条多少字」，不再只留一句失去锚点。","体检和预检里的闸号不再显示成「闸?」：能正确写出闸1／闸8／闸10，没有闸号的项标成「体检」，多行长句也压成一行。","本次公告替换 1.3.0 的公告；1.3.0 的关键词、玩法锚点、分批修复与共用规则等改动全部保留。"]};
   /* 注意：工厂函数里没有 root 这个变量（root 只是外层 IIFE 的参数），必须用 globalThis。 */
   try{globalThis.Zaojing=globalThis.Zaojing||{};globalThis.Zaojing.version=WORKBENCH_VERSION;globalThis.Zaojing.build=WORKBENCH_BUILD;globalThis.Zaojing.releaseNotes=WORKBENCH_RELEASE;}catch(_){ }
   try{
@@ -4288,11 +4359,24 @@ keys 用玩家会自然说出的行为词，从该档自己的正文里长出来
   const recognized=card=>{try{return F.previewDocument(card,(card.data||card).first_mes||'','repair-check').recognized;}catch(_){return false;}};const previewBefore=recognized(before),previewAfter=recognized(after),ma=F.measure(before),mb=F.measure(after),budgetRegression=ma.effective>=ma.minimum&&mb.effective<mb.minimum,duplicateRegression=mb.duplicate>ma.duplicate;
   const progress=[],progressRegressions=[];
   const da=Z.qualityRules.probeDensity(before),db=Z.qualityRules.probeDensity(after);
-  if(da.totalCount>=7){if(db.totalCount>da.totalCount)progressRegressions.push('first-turn-density');if(db.totalCount<da.totalCount)progress.push({rule:'first-turn-density',label:'首轮拉取条目',before:da.totalCount,after:db.totalCount,total:da.totalCount,required:6});}
+  /* 首轮密度档位本身认模式（B 档要条目数和字数同时超限）。把条目修回「玩家真会说的话」，
+     首轮拉取条目 +2 是修复的正常代价：9 条 9141 字 → 11 条 11007 字 仍在「可接受」档，
+     不该拦。只有这一跳真的把首轮顶进过高/病态，才算进展回退。 */
+  const densityBad=v=>v==='过高'||v==='病态';
+  if(da.totalCount>=7){
+   if(db.totalCount>da.totalCount&&!densityBad(da.verdict)&&densityBad(db.verdict)){
+    /* 记清楚是哪几个条目、哪几个键把首轮顶上去的，拒绝文案才写得出人话，
+       而不是笼统说一句"失去锚点"。 */
+    const priorHits=new Set((da.detail||[]).map(h=>h.comment));
+    const newHits=(db.detail||[]).filter(h=>!priorHits.has(h.comment)).map(h=>{const old=(oldEntries.find(e=>e.comment===h.comment)?.keys)||[];return {entry:h.comment,keys:[...new Set(h.hit||[])].filter(k=>!old.includes(k)),allKeys:h.hit||[]};}).filter(h=>h.keys.length);
+    progressRegressions.push({rule:'first-turn-density',label:'首轮拉取条目',before:da.totalCount,after:db.totalCount,beforeChars:da.totalChars,afterChars:db.totalChars,newHits});
+   }
+   if(db.totalCount<da.totalCount)progress.push({rule:'first-turn-density',label:'首轮拉取条目',before:da.totalCount,after:db.totalCount,total:da.totalCount,required:6});
+  }
   for(const finding of Object.values(a.audit).flat().filter(f=>f.severity==='error'&&f.progress?.rule==='play-anchor-coverage')){
    const p=finding.progress,q=Object.values(b.audit).flat().find(f=>f.progress?.rule===p.rule)?.progress;
    if(!q||JSON.stringify(p.entryIds)!==JSON.stringify(q.entryIds)||JSON.stringify(p.anchors)!==JSON.stringify(q.anchors))continue;
-   if(p.coveredIds.some(id=>!q.coveredIds.includes(id)))progressRegressions.push(p.rule);
+   if(p.coveredIds.some(id=>!q.coveredIds.includes(id)))progressRegressions.push({rule:p.rule,label:p.label,anchorEntryIds:p.entryIds,lostIds:p.coveredIds.filter(id=>!q.coveredIds.includes(id)),before:p.covered,after:q.covered,total:q.total});
    if(q.covered>p.covered)progress.push({rule:p.rule,label:p.label,before:p.covered,after:q.covered,total:q.total,required:q.required});
   }
   for(const e of oldEntries.filter(e=>live(e)&&!constant(e)&&!(e.keys||[]).some(token))){const n=nextEntries.find(n=>n.id===e.id);if(!n||!live(n))continue;const required=Z.keyPolicy.limits(e).target,prior=(e.keys||[]).filter(k=>Z.keyPolicy.naturalKey(e,k)),later=(n.keys||[]).filter(k=>Z.keyPolicy.naturalKey(n,k));if(prior.length<required&&later.length>prior.length&&prior.every(k=>later.includes(k)))progress.push({rule:'natural-keyword-coverage',label:(e.comment||'条目')+'自然入口',before:prior.length,after:Math.min(required,later.length),total:required,required});}
@@ -4390,25 +4474,37 @@ keys 用玩家会自然说出的行为词，从该档自己的正文里长出来
   mergeTokens(card,report);
   const now=d.character_book.entries;m.keywordRepairVersion=1;
   // Recover only the exact keys overwritten by a known earlier local repair, not later user edits.
+  const firstMes=String((card.data||card).first_mes||'');
+  /* 首轮名额：这一条还没被首轮拉到时，再多拉一条会不会把闸10 顶成 error。
+     已经被首轮拉到的条目多给几个键不增加条数，不受这个限制。
+     恢复历史入口同样要守这个名额：45 条被改坏的入口一次性全捡回来，会当场把首轮顶爆，
+     方案被自己的复检拒掉，按钮就变成「什么都没做」。超出的入口留给 AI Diff。 */
+  const budgetFullFor=e=>{const dens=Z.qualityRules.probeDensity(card);return !(dens.detail||[]).some(h=>h.comment===e.comment)&&Z.qualityRules.firstTurnOverload(dens,String(e.content||'').length);};
   for(let h=0;h+1<history.length;h++){
    if(!/按体检修复结构和关键词/.test(history[h].label||'')||(history[h+1].card?.data||history[h+1].card)?.extensions?.rp_studio?.keywordRepairVersion>=1)continue;
    const prior=(history[h].card?.data||history[h].card)?.character_book?.entries||[],damaged=(history[h+1].card?.data||history[h+1].card)?.character_book?.entries||[];
-   for(const e of now){const old=prior.find(n=>n.id===e.id),bad=damaged.find(n=>n.id===e.id);if(old?.keys?.length&&bad&&JSON.stringify(old.keys)!==JSON.stringify(bad.keys)&&(JSON.stringify(e.keys)===JSON.stringify(bad.keys)||(e.keys||[]).some(k=>(bad.keys||[]).includes(k)&&Z.keyPolicy.isFragment(k,e.comment)))){e.keys=[...new Set([...clone(old.keys),...(e.keys||[]).filter(k=>!(bad.keys||[]).includes(k))])];e.extensions=e.extensions||{};e.extensions.rp_studio=e.extensions.rp_studio||{};e.extensions.rp_studio.restoredNaturalKeys=[...e.keys];report.push({type:'restore-natural-keys',id:e.id,before:bad.keys,after:old.keys});}}
+   for(const e of now){const old=prior.find(n=>n.id===e.id),bad=damaged.find(n=>n.id===e.id);if(old?.keys?.length&&bad&&JSON.stringify(old.keys)!==JSON.stringify(bad.keys)&&(JSON.stringify(e.keys)===JSON.stringify(bad.keys)||(e.keys||[]).some(k=>(bad.keys||[]).includes(k)&&Z.keyPolicy.isFragment(k,e.comment)))){const restored=[...new Set([...clone(old.keys),...(e.keys||[]).filter(k=>!(bad.keys||[]).includes(k))])],budgetFull=budgetFullFor(e),keep=budgetFull?restored.filter(k=>!firstMes.includes(k)||(e.keys||[]).includes(k)):restored;/* 开场白里的恢复词只有在名额还够时才捡；名额不够就只恢复不在开场白里的词，凑不出键的条目原样留给 AI Diff，绝不为了「恢复」把首轮顶超限。 */
+     /* 恢复出来的入口本身也得是合格入口：至少 2 个键、至少 1 个二字键。
+        名额不够时砍掉开场白里的词，很可能把这条砍成残缺入口——那就整条留给 AI Diff，
+        不能拿「恢复」的名头把闸8 的一条错误换成另一条。 */
+     if(keep.length<2||!keep.some(k=>k.length===2))continue;
+     e.keys=keep;e.extensions=e.extensions||{};e.extensions.rp_studio=e.extensions.rp_studio||{};e.extensions.rp_studio.restoredNaturalKeys=[...keep];report.push({type:'restore-natural-keys',id:e.id,before:bad.keys,after:keep,budgetFull});}}
   }
   const names=Z.keyPolicy.characterNames(card),primary=now.find(e=>live(e)&&category(e)==='profile');if(primary){for(const name of names){if(!now.some(e=>(e.keys||[]).includes(name))&&primary.keys.length<10){primary.keys.push(name);primary.extensions=primary.extensions||{};primary.extensions.rp_studio=primary.extensions.rp_studio||{};primary.extensions.rp_studio.primaryCharacterIndex=true;report.push({type:'primary-character-key',id:primary.id,key:name});}}}
   const occupied=new Set(now.filter(live).flatMap(e=>e.keys||[]));
   const coreBroad=new Set(['去了','到了','不行了','做完','结束','身体','想要','忍不住','发现','怀疑','看到了','比较','不同','区别','差别','一样','不像','和她','公寓','开门','钥匙','中午','午休','碰见','碰到','偶遇','下雨','屁股']);
   for(const e of now.filter(e=>live(e)&&!constant(e))){if((e.keys||[]).some(k=>F.isGenericKey(k)||coreBroad.has(k))&&!(e.useProbability===true&&e.probability<=60)){report.push({type:'probability-gating',id:e.id,from:e.probability,to:60});e.useProbability=true;e.probability=60;if(e.extensions){if(Object.hasOwn(e.extensions,'probability'))e.extensions.probability=60;if(Object.hasOwn(e.extensions,'useProbability'))e.extensions.useProbability=true;}}}
 
-  for(const e of now.filter(e=>live(e)&&!constant(e))){const keys=Z.keyPolicy.supplement(e,occupied);if(JSON.stringify(keys)!==JSON.stringify(e.keys)){report.push({type:'supplement-keys',id:e.id,before:e.keys,after:keys});e.keys=keys;}}
-  // Never disguise a real first-turn overload by inventing rarer words. Hold only unsafe restorations for review.
-  const oldDensity=Z.qualityRules.probeDensity(input);
-  if(oldDensity.totalCount<10){const original=(input.data||input).character_book?.entries||[],priorHits=new Set(oldDensity.detail.map(r=>r.comment));
-   for(const hit of [...Z.qualityRules.probeDensity(card).detail].reverse()){
-    if(Z.qualityRules.probeDensity(card).totalCount<10)break;if(priorHits.has(hit.comment))continue;
-    const e=now.find(e=>e.comment===hit.comment),old=original.find(n=>n.id===e?.id);if(!e||!old||JSON.stringify(e.keys)===JSON.stringify(old.keys))continue;
-    e.extensions=e.extensions||{};e.extensions.rp_studio=e.extensions.rp_studio||{};e.extensions.rp_studio.pendingNaturalKeys=[...e.keys];e.keys=clone(old.keys);delete e.extensions.rp_studio.restoredNaturalKeys;report.push({type:'recovery-needs-density-review',id:e.id});
-   }
+  for(const e of now.filter(e=>live(e)&&!constant(e))){const keys=Z.keyPolicy.supplement(e,occupied,{avoid:budgetFullFor(e),avoidText:firstMes});if(JSON.stringify(keys)!==JSON.stringify(e.keys)){report.push({type:'supplement-keys',id:e.id,before:e.keys,after:keys});e.keys=keys;}}
+  /* 碎片键就地修掉：删掉碎片，再从「历史自然入口 / 标题 / 标题切分词 / 同义词表」补合格词。
+     补不进合格词的条目原样留着，KEY_FRAGMENT 错误继续报出来交给 AI Diff——
+     绝不把碎片键当成「已经修好」悄悄放回去，那正是上一版把死结甩给 AI 的根源。 */
+  for(const e of now.filter(x=>live(x)&&!constant(x)&&(x.keys||[]).some(k=>Z.keyPolicy.isFragment(k,x.comment||'')))){
+   const before=clone(e.keys||[]),budgetFull=budgetFullFor(e),next=Z.keyPolicy.repair(e,{occupied,firstMes,budgetFull});
+   if(JSON.stringify(next)===JSON.stringify(before)){report.push({type:'fragment-keys-need-ai',id:e.id,keys:before,budgetFull});continue;}
+   report.push({type:'repair-fragment-keys',id:e.id,before,after:next,budgetFull});
+   e.keys=next;for(const k of next)occupied.add(k);
+   if(e.extensions?.rp_studio?.pendingNaturalKeys)delete e.extensions.rp_studio.pendingNaturalKeys;
   }
   if(installRoutingIndex(card,overloaded))report.push({type:'index'});
   Z.displayNames.cleanCard(card);const verification=assess(input,card,{preserveExact:true});
@@ -4427,9 +4523,14 @@ keys 用玩家会自然说出的行为词，从该档自己的正文里长出来
   if(first?.code==='FULL_CARD_DUPLICATE'){const pairs=[];for(const e of matches){if(category(e)==='token'&&/(?:二|副本)$/.test(e.comment||'')){const target=entries.find(n=>n.comment===e.comment.replace(/(?:二|副本)$/,''));if(target){pairs.push(e,target);continue;}}pairs.push(e);}matches.splice(0,matches.length,...new Set(pairs));}
   const targets=(matches.length?matches:entries.filter(e=>live(e)&&!constant(e))).slice(0,limit),targetNames=new Set(targets.map(e=>e.comment));
   const rows=ordered.filter(f=>f===first||targets.some(e=>f.detail?.includes(e.comment)||f.title?.includes(e.comment))||key&&f.detail?.includes(key[1]||key[2])).slice(0,8);
-  const metadata=entries.filter(live).map(e=>({id:e.id,title:e.comment,category:category(e),constant:constant(e),keys:e.keys||[],pendingNaturalKeys:e.extensions?.rp_studio?.pendingNaturalKeys,firstTurnHits:Z.qualityRules.probeDensity(card).detail.find(h=>h.comment===e.comment)?.hit||[],chars:String(e.content||'').length}));
+  const density=Z.qualityRules.probeDensity(card),T=Z.qualityRules.FIRST_TURN,firstMesText=String(d.first_mes||'');
+  /* 开场白里的词是最自然的入口，但加进去会把首轮拉取顶过上限。与其让模型猜，
+     不如直接把「本批不能用的词」列给它，让它另找玩家会说的说法。 */
+  const blockedFirstMes=[...new Set(targets.flatMap(e=>[e.comment,...(e.extensions?.rp_studio?.pendingNaturalKeys||[])]).filter(k=>k&&firstMesText.includes(k)))];
+  const firstTurn={densityMode:Z.qualityRules.DENSITY_MODE,currentEntries:density.totalCount,currentChars:density.totalChars,entryLimit:T.countHigh,charLimit:T.charsHigh,remainingEntries:Math.max(0,T.countHigh-density.totalCount),blockedFirstMesWords:blockedFirstMes};
+  const metadata=entries.filter(live).map(e=>({id:e.id,title:e.comment,category:category(e),constant:constant(e),keys:e.keys||[],pendingNaturalKeys:e.extensions?.rp_studio?.pendingNaturalKeys,firstTurnHits:density.detail.find(h=>h.comment===e.comment)?.hit||[],chars:String(e.content||'').length}));
   const m=F.meta(card),requestCard={spec:card.spec,data:{name:d.name,description:d.description,personality:d.personality,scenario:d.scenario,creator_notes:d.creator_notes,first_mes:d.first_mes,character_book:{entries:targets},extensions:{rp_studio:{cardKind:m.cardKind,uiMode:m.uiMode,goal:m.goal,blueprint:m.blueprint}}}};
-  const requirement=Z.auditFix.buildBatchAiFixRequirement(rows)+'\n本批只修改下面这些既有条目，使用原 id；未涉及的属性必须省略，不能用空正文或默认值替代。不要新增替代条目，不得关闭或删除问题条目来消除错误。\n目标条目：'+JSON.stringify(targets.map(e=>({id:e.id,title:e.comment})))+'\n全卡结构与关键词占用表（仅用作约束，未展示的正文不得改写）：'+JSON.stringify(metadata)+'\n每次应用前会实际复检。'+(first.progress?.rule==='play-anchor-coverage'?`当前锚点覆盖 ${first.progress.covered}/${first.progress.total} 条，达标需 ${first.progress.required} 条。本批只修目标清单，允许覆盖数逐批累积，不要求三个条目一次消除全卡的聚合问题，也不要等待用户手工点名下一批。`:'')+'新增问题、正文丢失、样式退化或没有实际进展的方案将被拒绝。';
+  const requirement=Z.auditFix.buildBatchAiFixRequirement(rows)+'\n本批只修改下面这些既有条目，使用原 id；未涉及的属性必须省略，不能用空正文或默认值替代。不要新增替代条目，不得关闭或删除问题条目来消除错误。\n目标条目：'+JSON.stringify(targets.map(e=>({id:e.id,title:e.comment})))+'\n全卡结构与关键词占用表（仅用作约束，未展示的正文不得改写）：'+JSON.stringify(metadata)+'\n首轮拉取预算：'+JSON.stringify(firstTurn)+'。'+(blockedFirstMes.length?'上面 blockedFirstMesWords 里的词出现在开场白里，本批不能新增（加了会把首轮拉取顶过上限），请另找玩家会自然说出的说法。':'')+'\n每次应用前会实际复检。'+(first.progress?.rule==='play-anchor-coverage'?`当前锚点覆盖 ${first.progress.covered}/${first.progress.total} 条，达标需 ${first.progress.required} 条。本批只修目标清单，允许覆盖数逐批累积，不要求三个条目一次消除全卡的聚合问题，也不要等待用户手工点名下一批。`:'')+'新增问题、正文丢失、样式退化或没有实际进展的方案将被拒绝。';
   if(purpose!=='lore'){
    requestCard.data.character_book.entries=[];
    const field=purpose==='regex'?'regex_scripts':'uiTemplates',source=purpose==='regex'?d.extensions?.regex_scripts:d.uiTemplates;
@@ -4500,7 +4601,28 @@ keys 用玩家会自然说出的行为词，从该档自己的正文里长出来
   function stage(phase,m){state.stage=label(phase);state.status=String(phase).includes('检查')?'checking':'running';if(m){state.effective=m.effective;state.minimum=m.minimum;}remember();}
   function finish(status,error=''){trackedSignal=null;state.status=status;state.error=error;state.requestStarted=0;if(status==='complete'){state.stage='最低标准与本地 UI 检查完成；等待目标平台实际审核';if(!state.completed.includes('本地检查'))state.completed.push('本地检查');}remember();}
   function restoreProject(saved){trackedSignal=null;try{state=saved?JSON.parse(saved):{status:'idle',stage:'等待生成',effective:0,minimum:20000,completed:[],started:0,requestStarted:0,received:0,http:null,error:''};}catch(_){state={status:'idle',stage:'等待生成',effective:0,minimum:20000,completed:[],started:0,requestStarted:0,received:0,http:null,error:''};}if(['running','checking'].includes(state.status)){state.status='interrupted';state.requestStarted=0;}remember();}
-  F.feedback={start,stage,checkpoint,finish,restoreProject};
+  /* 导入旧工程或重新体检后，进度状态必须按当前卡的真实体检结果重算。
+     旧工程里存的是当时那一刻的失败文案——条目数、字数、条目名早就跟现在的卡对不上了。
+     照搬会在导航上显示「需要处理」，再导出还会把这段假状态继续传下去。 */
+  function refreshProgressFromCard(card,checks){
+   if(!card)return;let audit=checks;try{audit=audit||Z.audit.runAll(card);}catch(_){return;}
+   const errors=[],warnings=[];
+   for(const rows of Object.values(audit||{}))for(const f of rows||[]){if(f.severity==='error')errors.push(f);else if(f.severity==='warning')warnings.push(f);}
+   /* 体检结果本身没有数字闸号，闸号藏在 code（PIPELINE_GATE_10 / MEAT_GATE_8）或标题里。
+      直接读 f.gate 只会得到「闸?」，玩家根本认不出是哪个闸门。 */
+   const gateOf=f=>{if(f?.gate!=null)return String(f.gate);const m=String(f?.code||'').match(/_GATE_(\d+)$/)||String(f?.title||'').match(/闸门\s*(\d+)/);return m?m[1]:'';};
+   const brief=f=>{const g=gateOf(f);return (g?'闸'+g:'体检')+'「'+String(f.detail||f.code||'').replace(/\s+/g,' ').slice(0,120)+'」';};
+   try{const m=F.measure(card);if(m){state.effective=m.effective;state.minimum=m.minimum;}}catch(_){}
+   state.checkedAt=new Date().toISOString();
+   if(errors.length){
+    state.status='failed';state.stage='本地体检：'+errors.length+' 项待修复'+(warnings.length?' · '+warnings.length+' 项建议检查':'');
+    state.error='待修复 '+errors.length+' 项：'+errors.slice(0,3).map(brief).join('；')+(warnings.length?'；建议检查 '+warnings.length+' 项：'+warnings.slice(0,3).map(brief).join('；'):'');
+   }else{
+    state.status='complete';state.stage='本地体检已通过（0 项待修复）'+(warnings.length?'，另有 '+warnings.length+' 项建议检查':'');delete state.error;
+   }
+   remember();
+  }
+  F.feedback={start,stage,checkpoint,finish,restoreProject,refreshProgressFromCard};
   function signature(rules){return (rules||[]).map(r=>{const n=Z.editor.normalizeRegexScript(r);return Object.fromEntries(['regex','flags','replacement','placement','markdownOnly','promptOnly','enabled','disabled'].map(k=>[k,n[k]]));});}
   function owned(card){const actual=JSON.stringify(signature(card.data?.extensions?.regex_scripts)),design=F.meta(card).presentation||{};return actual===JSON.stringify(signature(F.displayRules(card,design)));}
   function preview(){
@@ -5142,7 +5264,8 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
       setStep('request','done');setStep('parse','active');stopLive();paintLive('正在解析方案并做本地预检');
       ws.lastDiffOutput={text,createdAt:new Date().toISOString()};$('#diff-existing-json').value=text;Z.workspace.persist(ws);pendingDiff=reviewDiffText(text,{requestScope,auditRepair,repairBatch,baseCard});
       setStep('parse','done');hideActivity();
-      status.textContent=pendingDiff.changes.length?`Diff 已生成 · ${lastEvidence.effort} · 请审阅后应用`:'AI 没有提出可应用修改，请补充更具体的修改要求后重试。';renderDiffPreview();
+      const autoNote=pendingDiff.autoDropped?.length?`（已自动去掉开场白里的词：${pendingDiff.autoDropped.map(d=>d.entry+'←'+d.keys.join('、')).join('；')}）`:'';
+      status.textContent=pendingDiff.changes.length?`Diff 已生成${autoNote} · ${lastEvidence.effort} · 请审阅后应用`:'AI 没有提出可应用修改，请补充更具体的修改要求后重试。';renderDiffPreview();
     }catch(e){
       stopLive();
       if(e.name==='AbortError'){setStep('request','fail');hideActivity();status.textContent='已停止；原卡保留，可以重试。';$('#diff-preview').innerHTML='<div class="empty"><b>本次请求已停止</b><p>原卡内容保留，可重新生成修改方案。</p><button type="button" class="secondary" data-action="generate-diff">重试生成修改方案</button></div>';}
@@ -5156,9 +5279,44 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
     }finally{stopLive();stop.hidden=true;dock.classList.remove('is-working');button.disabled=false;button.textContent='流式生成 Diff';endStream(controller);}
   }
 
+  /* 预检自动去词：方案唯一的问题是首轮拉取超限，而且超限只是新增了开场白里的词造成的，
+     就把这些词从本批改动里摘掉再复检一次。复检通过就按这个更省的方案走，
+     并把摘掉的词挂在 diff 上，让预览、应用和提示用的是同一份内容。 */
+  function gateOf(f){if(f?.gate!=null)return String(f.gate);const m=String(f?.code||'').match(/_GATE_(\d+)$/)||String(f?.title||'').match(/闸门\s*(\d+)/);return m?m[1]:'';}
+  function salvageFirstTurnWords(baseCard,diff,check){
+   const regs=check.progressRegressions||[];
+   if(regs.length!==1||regs[0].rule!=='first-turn-density')return null;
+   /* 闸10 的超限本身就是一个新错误，要放它过去；除此之外不能有任何新错误/新建议。 */
+   const foreign=(check.introduced||[]).filter(f=>gateOf(f)!=='10');
+   if(foreign.length||check.introducedWarnings.length||check.lost.length||check.budgetRegression||check.duplicateRegression||check.previewRegression||check.warningRegression)return null;
+   const hits=(regs[0].newHits||[]).filter(h=>h.keys?.length);
+   if(!hits.length)return null;
+   const baseEntries=(baseCard.data||baseCard).character_book?.entries||[],wordsOf=new Map(hits.map(h=>[h.entry,new Set(h.keys)]));
+   const dropped=[];let touched=0;
+   const changes=(diff.changes||[]).map(change=>{
+    if(change.path!=='data.character_book.entries'||!Array.isArray(change.value))return change;
+    const value=change.value.map(row=>{
+     const title=row?.comment||row?.name||baseEntries.find(e=>e.id===row?.id)?.comment,words=wordsOf.get(title);
+     if(!words||!Array.isArray(row.keys))return row;
+     const keys=row.keys.filter(k=>!words.has(k));
+     if(!keys.length||keys.length===row.keys.length)return row;
+     touched++;dropped.push({entry:title,keys:row.keys.filter(k=>words.has(k))});
+     return {...row,keys};
+    });
+    return {...change,value};
+   });
+   return touched?{diff:{...diff,changes},dropped}:null;
+  }
   function reviewDiffText(text,{requestScope,auditRepair,repairBatch,baseCard}){
-    const parsed=Z.generation.parseDiff(text),obj=Z.generation.jsonFrom(text),merges=Array.isArray(obj.merge)?obj.merge:obj.merge?[obj.merge]:[];for(const merge of merges)parsed.changes.push(Z.verifiedRepair.planMerge(baseCard,merge));Z.studioUi.assertScope(parsed,requestScope);
-    if(auditRepair){Z.verifiedRepair.assertBatch(parsed,repairBatch);parsed.auditRepair=true;parsed.baseCard=baseCard;const check=Z.verifiedRepair.assess(baseCard,diffCandidate(baseCard,parsed));if(!check.acceptable||!check.improved)throw Error(repairRejection(check));parsed.repairProgress=check.progress;parsed.allowedWarnings=check.allowedWarnings;}
+    let parsed=Z.generation.parseDiff(text),obj=Z.generation.jsonFrom(text),merges=Array.isArray(obj.merge)?obj.merge:obj.merge?[obj.merge]:[];for(const merge of merges)parsed.changes.push(Z.verifiedRepair.planMerge(baseCard,merge));Z.studioUi.assertScope(parsed,requestScope);
+    if(auditRepair){
+     Z.verifiedRepair.assertBatch(parsed,repairBatch);parsed.auditRepair=true;parsed.baseCard=baseCard;
+     let check=Z.verifiedRepair.assess(baseCard,diffCandidate(baseCard,parsed));
+     const salvage=salvageFirstTurnWords(baseCard,parsed,check);
+     if(salvage){const retry=Z.verifiedRepair.assess(baseCard,diffCandidate(baseCard,salvage.diff));if(retry.acceptable&&retry.improved){parsed=salvage.diff;parsed.autoDropped=salvage.dropped;check=retry;}}
+     if(!check.acceptable||!check.improved)throw Error(repairRejection(check));
+     parsed.auditRepair=true;parsed.baseCard=baseCard;parsed.repairProgress=check.progress;parsed.allowedWarnings=check.allowedWarnings;
+    }
     return parsed;
   }
   function reviewExistingDiff(){
@@ -5166,20 +5324,40 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
     const text=String($('#diff-existing-json').value||$('#diff-stream').textContent||'').trim();
     if(!text){$('#diff-reuse-details').open=true;$('#diff-existing-json').focus();return toast('请粘贴之前的完整 JSON 修改方案，无需重新请求 AI');}
     const baseCard=collectForm(),findings=Object.values(Z.audit.runAll(baseCard)).flat().filter(f=>['error','warning'].includes(f.severity)),auditRepair=findings.length>0,repairBatch=auditRepair?Z.verifiedRepair.batch(baseCard,findings):null;
-    try{pendingDiff=reviewDiffText(text,{requestScope:Z.studioUi.captureScope(),auditRepair,repairBatch,baseCard});ws.lastDiffOutput={text,createdAt:new Date().toISOString()};Z.workspace.persist(ws);$('#diff-stream-status').textContent='已有输出预检通过，未发送 AI 请求；请勾选并审阅后应用。';renderDiffPreview();}
+    try{pendingDiff=reviewDiffText(text,{requestScope:Z.studioUi.captureScope(),auditRepair,repairBatch,baseCard});ws.lastDiffOutput={text,createdAt:new Date().toISOString()};Z.workspace.persist(ws);const dropped=pendingDiff.autoDropped||[];$('#diff-stream-status').textContent='已有输出预检通过，未发送 AI 请求；'+(dropped.length?'已自动去掉开场白里的词：'+dropped.map(d=>d.entry+'←'+d.keys.join('、')).join('；')+'；':'')+'请勾选并审阅后应用。';renderDiffPreview();}
     catch(error){pendingDiff=null;$('#diff-stream-status').textContent=error.message;$('#diff-preview').innerHTML='<div class="error-box"><b>'+esc(error.message)+'</b><p>本次只运行本地预检，没有发送 AI 请求；原输出保留，可调整后再次预检。</p></div>';}
   }
   function retryDiff(){const prompt=String($('#diff-prompt').value||'').trim();return generateDiff(prompt,lastDiffRequest?.options||{});}
   const diffArrayPaths=new Set(['data.character_book.entries','data.extensions.regex_scripts','data.uiTemplates']);
   function diffCandidate(current,diff){let next=clone(current);for(const change of diff.changes){const prepared=prepareDiffChange(next,change);next=Z.patch.applyPatch(next,Z.patch.createPatch(next,[prepared]));if(change.merge){const {from,into}=change.merge,entries=next.data.character_book.entries,source=entries.find(e=>e.id===from),target=entries.find(e=>e.id===into);if(!source||!target||!Z.verifiedRepair.textRetained(source.content,target.content))throw Error('合并源正文未完整保留');next.data.character_book.entries=entries.filter(e=>e.id!==from);}}return enforceLoreKeyRules(Z.displayNames.cleanCard(next));}
   function progressMessage(rows=[]){return rows.map(p=>`${p.label} ${p.before}→${p.after}/${p.total} 条，达标需 ${p.required} 条。`).join(' ');}
-  function repairRejection(check){return '修复方案未通过预检，未应用：'+(check.lost.length?'存在正文丢失；':'')+(check.introduced.length?'引入 '+check.introduced.length+' 项新错误；':'')+(check.introducedWarnings.length?'引入 '+check.introducedWarnings.length+' 项新建议；':'')+(check.previewRegression?'正则预览退化；':'')+(check.budgetRegression?'有效字数跌破标准；':'')+(check.duplicateRegression?'新增重复正文；':'')+(check.progressRegressions?.length?'已修好的玩法重新失去锚点；':'')+(check.warningRegression?'建议净增超过本批限额；':'')+(!check.improved?'体检问题没有减少；':'')+'原卡保留，请重新生成这一小批修改。';}
+  function repairRejection(check){
+   const reasons=[],brief=f=>{const g=gateOf(f);return (g?'闸'+g:'体检')+'「'+String(f.detail||f.code||'').replace(/\s+/g,' ').slice(0,80)+'」';};
+   if(check.lost.length)reasons.push('存在正文丢失（'+check.lost.slice(0,3).map(e=>e.comment||e.id||'未命名').join('、')+'）');
+   if(check.introduced.length)reasons.push('引入 '+check.introduced.length+' 项新错误：'+check.introduced.slice(0,3).map(brief).join('；'));
+   if(check.introducedWarnings.length)reasons.push('引入 '+check.introducedWarnings.length+' 项新建议：'+check.introducedWarnings.slice(0,3).map(brief).join('；'));
+   if(check.previewRegression)reasons.push('正则预览退化');
+   if(check.budgetRegression)reasons.push('有效字数跌破标准');
+   if(check.duplicateRegression)reasons.push('新增重复正文');
+   /* 退步按 rule 分别写。密度退步绝不能再写成"失去锚点"——上一版就是错在这里。 */
+   for(const p of check.progressRegressions||[]){
+    if(p.rule==='first-turn-density'){
+     const hits=(p.newHits||[]).map(h=>h.entry+'←'+h.keys.join('、')).join('；'),T=Z.qualityRules.FIRST_TURN;
+     reasons.push('首轮拉取从 '+p.before+' 条增加到 '+p.after+' 条（'+p.beforeChars+' 字 → '+p.afterChars+' 字，上限 '+T.countHigh+' 条 / '+T.charsHigh+' 字），新增命中：'+(hits||'（未能定位到具体键）')+'；这些词出现在开场白里，加进去会让首轮多注入这些条目');
+    }else if(p.rule==='play-anchor-coverage'){
+     reasons.push((p.label||'玩法锚点覆盖')+'退步：这些条目丢了玩法锚点——'+((p.lostIds||[]).join('、')||'（未记录 id）')+(p.before!=null?'（覆盖 '+p.before+' → '+(p.after??'?')+'/'+p.total+'）':''));
+    }else reasons.push((p.label||p.rule)+'退步');
+   }
+   if(check.warningRegression)reasons.push('建议净增超过本批限额');
+   if(!check.improved)reasons.push('体检问题没有减少');
+   return '修复方案未通过预检，未应用：'+reasons.join('；')+'。原卡保留，请重新生成这一小批修改。';
+  }
   function prepareDiffChange(current,change){if(!diffArrayPaths.has(change.path)||!Array.isArray(change.value))return change;const before=getPath(current,change.path)||[],merged=Z.safety.mergeArrayPreservingOmissions(before,change.value);return{...change,value:Z.editor.preserveUnknownArrayFields(before,merged.value),reason:`${change.reason}（原位更新 ${merged.stats.updated} 条，新增 ${merged.stats.added} 条，保留 ${merged.stats.preserved} 条）`}}
   function diffMarkup(before,after,side){const left=jsonText(before),right=jsonText(after);if(left===right)return esc(left);let start=0;while(start<left.length&&start<right.length&&left[start]===right[start])start++;let endLeft=left.length,endRight=right.length;while(endLeft>start&&endRight>start&&left[endLeft-1]===right[endRight-1]){endLeft--;endRight--}const source=side==='before'?left:right,end=side==='before'?endLeft:endRight,tag=side==='before'?'del':'ins';return`${esc(source.slice(0,start))}<${tag} class="diff-highlight">${esc(source.slice(start,end))}</${tag}>${esc(source.slice(end))}`}
   function diffPairHtml(before,after,label='内容'){return`<div class="diff-entry-pair"><strong>${esc(label)}</strong><div class="diff-columns"><section class="diff-before"><span>修改前</span><pre>${diffMarkup(before,after,'before')}</pre></section><section class="diff-after"><span>AI 提议</span><pre>${diffMarkup(before,after,'after')}</pre></section></div></div>`}
   function diffChangeHtml(current,change){const before=getPath(current,change.path),after=prepareDiffChange(current,change).value;if(change.path!=='data.character_book.entries')return diffPairHtml(before,after);const oldRows=Array.isArray(before)?before:[],newRows=Array.isArray(after)?after:[],oldByKey=new Map(oldRows.map((row,index)=>[Z.safety.keyOf(row,index),row]).filter(row=>row[0]));return newRows.map((row,index)=>{const key=Z.safety.keyOf(row,index),old=oldByKey.get(key),changed=!Z.safety.same(old,row);if(!changed)return'';return diffPairHtml(old??'（新增条目）',row,row.comment||row.name||`世界书 ${index+1}`)}).join('')||'<p class="diff-no-change">AI 提议与当前世界书相同，不会重复应用。</p>'}
   function renderDiffPreview(){const box=$('#diff-preview');if(!pendingDiff?.changes.length){box.innerHTML=emptyModule('没有可应用的 Diff','换一种更具体的修改要求再试。');return}const current=collectForm();box.innerHTML=`<div class="diff-summary"><div><h3>${esc(pendingDiff.summary)}</h3>${pendingDiff.allowedWarnings?.length?'<details><summary>本批新增 '+pendingDiff.allowedWarnings.length+' 项待复核建议</summary>'+pendingDiff.allowedWarnings.map(f=>'<p>'+esc(f.title+'：'+f.detail)+'</p>').join('')+'</details>':''}${pendingDiff.repairProgress?.length?'<p class="fine">本批实际预检：'+esc(progressMessage(pendingDiff.repairProgress))+'审阅应用后，再继续剩余条目。</p>':''}<p>世界书会原位增量合并；每条修改单独左右对照，未提及内容保留。</p></div><div class="diff-selection-toolbar"><span id="rp-diff-selected" role="status"></span><button type="button" class="secondary" data-diff-select="all">全选</button><button type="button" class="secondary" data-diff-select="none">取消全选</button></div></div><div class="diff-review-list">${pendingDiff.changes.map((x,i)=>`<article class="diff-card"><label class="diff-check"><input type="checkbox" data-diff-index="${i}" checked> 应用这一项</label><div><b>${esc(Z.diffLayout.label(x.path))}</b><small class="fine"> · ${esc(x.path)}</small><p>${esc(x.reason)}</p></div><details class="diff-review-detail"><summary>展开修改前后对照</summary>${diffChangeHtml(current,x)}</details></article>`).join('')}</div><div class="diff-apply-bar"><span>仅在存在真实变化时建立快照并写入</span><button type="button" class="primary" data-action="apply-diff">应用选中修改</button></div>`;Z.diffLayout.refresh()}
-  async function applySelectedDiff(){if(!pendingDiff)return toast('请先生成修改方案并选择要应用的项目');const current=collectForm();if(pendingDiff.auditRepair&&!Z.safety.same(current,pendingDiff.baseCard))return toast('卡片在方案生成后又有修改，请按最新内容重新生成修复方案');const selected=$$('[data-diff-index]:checked').map(x=>pendingDiff.changes[Number(x.dataset.diffIndex)]).filter(Boolean),changes=selected.map(change=>prepareDiffChange(current,change)).filter(change=>{const before=getPath(current,change.path);return change.path==='data.character_book.entries'?!Z.safety.sameWorldbook(before,change.value):!Z.safety.same(before,change.value)});if(!selected.length)return toast('至少选择一项修改');let appliedProgress=[];if(pendingDiff.auditRepair){const candidate=diffCandidate(current,{changes:selected}),check=Z.verifiedRepair.assess(current,candidate);appliedProgress=check.progress;if(!check.acceptable||!check.improved){$('#diff-stream-status').textContent=repairRejection(check);return toast(repairRejection(check));}}if(!changes.length||Z.safety.same(current,diffCandidate(current,{changes:selected}))){$('#diff-stream-status').textContent='AI 提议与当前内容相同，未应用';return toast('没有真实变化：未写入，也没有建立空快照')}if(!await saveSnapshot('应用 Diff 前',current))return toast('未能保存修复前快照，请导出备份后重试');const next=diffCandidate(current,{changes:selected});Z.workspace.saveCard(ws,next,'应用 AI Diff');const actual=ws.card,failed=changes.filter(change=>{const expected=getPath(next,change.path),written=getPath(actual,change.path);return change.path==='data.character_book.entries'?!Z.safety.sameWorldbook(expected,written):!Z.safety.same(expected,written)});if(failed.length){Z.workspace.saveCard(ws,current,'Diff 写入校验失败，自动回滚');Z.workspace.persist(ws);renderWorkspace();$('#diff-stream-status').textContent='写入校验失败，已自动回滚';return toast('Diff 未能可靠写入，已恢复应用前内容')}await Z.workspace.persist(ws);pendingDiff=null;renderWorkspace();lastAuditAt=new Date();let checked=renderAudit();if(!checked.errors&&!checked.warnings){await finishVerifiedRepair(collectForm(),checked);checked=renderAudit();}const remaining=checked.errors+checked.warnings;$('#diff-raw-details').hidden=true;$('#diff-stream-status').textContent=`已应用 ${changes.length} 项修改；`+progressMessage(appliedProgress)+(remaining?`重新体检仍有 ${checked.errors} 项需修复、${checked.warnings} 项建议检查。`:'重新体检通过。');$('#diff-preview').innerHTML='<div class="'+(remaining?'error-box':'empty')+'"><h3>'+esc(remaining?'修复已应用，仍有待处理问题':'本地体检已通过')+'</h3><p>'+esc($('#diff-stream-status').textContent)+'</p><button type="button" class="secondary" data-action="audit">查看最新体检结果</button>'+(remaining?'<button type="button" class="primary" data-action="repair-audit-again">继续修复剩余问题</button>':'<button type="button" class="primary" data-action="export-json">导出已体检的 JSON 卡片</button>')+'</div>';toast(remaining?`已应用 ${changes.length} 项；体检仍有问题，请继续修复`:'修改已应用，本地体检已通过')}
+  async function applySelectedDiff(){if(!pendingDiff)return toast('请先生成修改方案并选择要应用的项目');const current=collectForm(),autoDropped=pendingDiff.autoDropped||[];if(pendingDiff.auditRepair&&!Z.safety.same(current,pendingDiff.baseCard))return toast('卡片在方案生成后又有修改，请按最新内容重新生成修复方案');const selected=$$('[data-diff-index]:checked').map(x=>pendingDiff.changes[Number(x.dataset.diffIndex)]).filter(Boolean),changes=selected.map(change=>prepareDiffChange(current,change)).filter(change=>{const before=getPath(current,change.path);return change.path==='data.character_book.entries'?!Z.safety.sameWorldbook(before,change.value):!Z.safety.same(before,change.value)});if(!selected.length)return toast('至少选择一项修改');let appliedProgress=[];if(pendingDiff.auditRepair){const candidate=diffCandidate(current,{changes:selected}),check=Z.verifiedRepair.assess(current,candidate);appliedProgress=check.progress;if(!check.acceptable||!check.improved){$('#diff-stream-status').textContent=repairRejection(check);return toast(repairRejection(check));}}if(!changes.length||Z.safety.same(current,diffCandidate(current,{changes:selected}))){$('#diff-stream-status').textContent='AI 提议与当前内容相同，未应用';return toast('没有真实变化：未写入，也没有建立空快照')}if(!await saveSnapshot('应用 Diff 前',current))return toast('未能保存修复前快照，请导出备份后重试');const next=diffCandidate(current,{changes:selected});Z.workspace.saveCard(ws,next,'应用 AI Diff');const actual=ws.card,failed=changes.filter(change=>{const expected=getPath(next,change.path),written=getPath(actual,change.path);return change.path==='data.character_book.entries'?!Z.safety.sameWorldbook(expected,written):!Z.safety.same(expected,written)});if(failed.length){Z.workspace.saveCard(ws,current,'Diff 写入校验失败，自动回滚');Z.workspace.persist(ws);renderWorkspace();$('#diff-stream-status').textContent='写入校验失败，已自动回滚';return toast('Diff 未能可靠写入，已恢复应用前内容')}await Z.workspace.persist(ws);pendingDiff=null;renderWorkspace();lastAuditAt=new Date();let checked=renderAudit();if(!checked.errors&&!checked.warnings){await finishVerifiedRepair(collectForm(),checked);checked=renderAudit();}const remaining=checked.errors+checked.warnings;$('#diff-raw-details').hidden=true;$('#diff-stream-status').textContent=`已应用 ${changes.length} 项修改；`+(autoDropped.length?`已自动去掉开场白里的词：${autoDropped.map(d=>d.entry+'←'+d.keys.join('、')).join('；')}；`:'')+progressMessage(appliedProgress)+(remaining?`重新体检仍有 ${checked.errors} 项需修复、${checked.warnings} 项建议检查。`:'重新体检通过。');$('#diff-preview').innerHTML='<div class="'+(remaining?'error-box':'empty')+'"><h3>'+esc(remaining?'修复已应用，仍有待处理问题':'本地体检已通过')+'</h3><p>'+esc($('#diff-stream-status').textContent)+'</p><button type="button" class="secondary" data-action="audit">查看最新体检结果</button>'+(remaining?'<button type="button" class="primary" data-action="repair-audit-again">继续修复剩余问题</button>':'<button type="button" class="primary" data-action="export-json">导出已体检的 JSON 卡片</button>')+'</div>';toast(remaining?`已应用 ${changes.length} 项；体检仍有问题，请继续修复`:'修改已应用，本地体检已通过')}
 
   async function importFile(file){try{const parsed=await Z.card.parseFile(file.name,await file.arrayBuffer());await saveSnapshot('导入文件前',collectForm());Z.workspace.saveCard(ws,parsed.raw,'导入前版本');ws.name=(parsed.card.name||file.name.replace(/\.[^.]+$/,''))+' 工作区';ws.sourceType=parsed.sourceType;ws.creation={goal:'导入已有卡片',brief:'卡片已导入，可以从各模块编辑或使用 Diff 改造。'};sourceAvatar=parsed.avatarBytes;if(sourceAvatar)await Z.workspace.saveAvatar(ws.id,sourceAvatar);Z.workspace.persist(ws);renderWorkspace();navigate('workspace');toast('已导入 '+file.name+'；原卡已保存为快照')}catch(e){toast(e.message)}}
 
@@ -5230,7 +5408,7 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
 
   function renderAuditFinding(finding,index){const action=Z.auditFix.classifyFinding(finding),actionHtml=finding.severity==='info'?'':`<button type="button" class="secondary audit-fix-action" data-audit-fix="${index}" data-audit-mode="${action.mode}">${action.label}</button>`;return`<article class="finding ${finding.severity}"><span class="severity">${finding.severity==='error'?'需修复':finding.severity==='warning'?'建议检查':'提示'}</span><div class="finding-copy"><h2>${esc(finding.title)}</h2><p>${esc(finding.detail)}</p></div>${actionHtml}</article>`}
   function renderAudit(snapshot){const current=collectForm(),rawAll=snapshot||Z.audit.runAll(current),all=Z.auditFix.decorateFindings(current,rawAll),repairPlan=Z.auditFix.batchPlan(all),localFixes=repairPlan.fixes,groups={runtime:'运行审核',quality:'质量审核',submission:'提交审核（过审规则）'},rows=Object.values(all).flat(),errors=rows.filter(x=>x.severity==='error').length,warnings=rows.filter(x=>x.severity==='warning').length,infos=rows.filter(x=>x.severity==='info').length,total=rows.length,entryCount=current.data?.character_book?.entries?.length||0;$$('[data-audit-tab]').forEach(x=>{const group=x.dataset.auditTab,count=all[group]?.length||0;x.classList.toggle('is-active',group===activeAuditTab);x.innerHTML=`${groups[group]} <span class="audit-count">${count?Z.auditGroups.group(all[group]).length+" 类 · "+count+" 处":"0"}</span>`});const summary=$('#audit-summary');if(summary)summary.innerHTML=`<section class="audit-summary-main" data-audit-verdict="${errors?'error':warnings?'warning':'pass'}"><h2>${lastAuditAt?(errors?'体检未通过':warnings?'体检仍有建议项':'本地体检通过'):'规则预检已加载'}</h2><p>${lastAuditAt?'执行时间：'+lastAuditAt.toLocaleTimeString('zh-CN',{hour12:false}):'点击“重新体检”会保存当前编辑并立即重新运行全部规则。'} · 当前编辑卡 ${entryCount} 条世界书 · 常驻 ${Z.qualityRules.probeDensity(current).constCount} 条</p><p class="fine" data-reference-audit>使用过审助手 V1.6 原版内核 ${Z.referenceAudit.version}；令牌和概率按已核实的运行时规则兼容复核，差异逐项列明。卡型字数与关键词闸门同时检查。</p><button type="button" class="primary audit-fix-all" data-audit-fix-all ${repairPlan.findings.length?'':'disabled'}>${repairPlan.ai.length?`按体检修复（${repairPlan.findings.length}）`:(localFixes.length?`一键修复格式（${localFixes.length}）`:'暂无待修复项')}</button><button type="button" class="secondary" data-action="repair-local-only">本地修复结构与入口（不请求 AI）</button><p class="fine" data-audit-repair-note>${repairPlan.ai.length?`先保存快照并尝试本地结构修复；剩余问题分小批交给 AI，预检通过后审阅应用，每批实际复检。`:(localFixes.length?'直接修复格式字段，修改前自动保存快照。':'当前只有说明或未发现待修复问题。')}</p>${!errors&&!warnings?'<button type="button" class="secondary" data-action="export-json">导出已体检的 JSON 卡片</button>':''}</section><div class="audit-summary-stat ${errors?'has-error':''}"><b>${errors}</b><span>需修复</span></div><div class="audit-summary-stat ${warnings?'has-warning':''}"><b>${warnings}</b><span>建议检查</span></div><div class="audit-summary-stat"><b>${infos}</b><span>提示</span></div>`;const list=all[activeAuditTab]||[];$('#audit-results').innerHTML=list.length?Z.auditGroups.render(list):`<div class="empty"><h2>${total?'本分类未发现问题':'本次体检未发现已覆盖问题'}</h2><p>${total?'其他审核分类仍有 '+total+' 项，请查看上方带数字的标签。':'全部本地规则已经实际执行；这仍不是目标平台的绝对过审证明。'}</p></div>`;return{all,total,errors,warnings,infos,localFixes}}
-  function runAuditNow(){const raw=collectForm();Z.workspace.saveCard(ws,raw,'体检前保存');Z.workspace.persist(ws);lastAuditAt=new Date();const checks=Z.audit.runAll(raw);activeAuditTab=['submission','runtime','quality'].find(group=>checks[group]?.some(f=>f.severity==='error'))||'submission';const result=renderAudit(checks);navigate('audit');toast(result.total?`体检完成：${result.errors} 项需修复，${result.warnings} 项建议检查`:'体检完成：已覆盖规则中未发现问题')}
+  function runAuditNow(){const raw=collectForm();Z.workspace.saveCard(ws,raw,'体检前保存');Z.workspace.persist(ws);lastAuditAt=new Date();const checks=Z.audit.runAll(raw);activeAuditTab=['submission','runtime','quality'].find(group=>checks[group]?.some(f=>f.severity==='error'))||'submission';const result=renderAudit(checks);Z.fullCard.feedback.refreshProgressFromCard?.(raw,checks);navigate('audit');toast(result.total?`体检完成：${result.errors} 项需修复，${result.warnings} 项建议检查`:'体检完成：已覆盖规则中未发现问题')}
   function setupModelSelect(){const old=$('#api-model');if(!old)return;const select=document.createElement('select');select.id='api-model-select';select.disabled=true;select.innerHTML='<option value="">请先读取模型</option>';old.replaceWith(select);$('[data-action="test-api"]').textContent='读取模型'}
   function syncModelControls(ids=Z.modelControl.readCache(localStorage),selected=settings().model){const cached=Z.modelControl.normalizeModels(ids),models=Z.modelControl.normalizeModels([...cached,selected]),active=models.includes(selected)?selected:(models[0]||'');$$('[data-model-scope],#api-model-select').forEach(select=>{select.innerHTML=models.map(id=>`<option value="${esc(id)}">${esc(id)}</option>`).join('')||'<option value="">请先读取模型</option>';select.disabled=!models.length;select.value=active});$$('.model-read-shortcut').forEach(button=>button.hidden=Boolean(cached.length));return active}
   function populateModels(ids,selected='',cache=false){const models=cache?Z.modelControl.writeCache(localStorage,ids):Z.modelControl.normalizeModels(ids);return syncModelControls(models,selected)}
@@ -5328,7 +5506,7 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
     projectId:()=>ws.id,
     captureProject:()=>{ws.card=collectForm();ws.updatedAt=new Date().toISOString();ws.projectDraft={goal:$('#goal-input').value,uiMode:Z.uiModes.selected(),tab:activeCreatorTab,progress:sessionStorage.getItem('zaojingtai.progress')};projectResources.set(ws.id,{workspaceDir,workspaceResources,workspaceScanStats});ws.storageBytes=new TextEncoder().encode(JSON.stringify(ws)).length+(sourceAvatar?.byteLength||0);return clone(ws);},
     stopProjectTasks:async()=>{if(streamController){streamController.abort();for(let n=0;n<60&&streamController;n++)await new Promise(r=>setTimeout(r,50));if(streamController)throw Error('AI请求还在停止中，请稍后切换');}},
-    activateProject:async project=>{const avatar=project.coverBase64?Uint8Array.from(atob(project.coverBase64),c=>c.charCodeAt(0)):(project.sourceType==='png'?await Z.workspace.loadAvatar(project.id):null);ws=clone(project);if(!ws.card)ws.card=blank();sourceAvatar=avatar;pendingDiff=null;lastDiffRequest=null;pendingModuleImport=null;pendingSnapshotRestore=null;pendingCardLoad=null;$('#diff-panel')?.classList.remove('is-open');const resources=projectResources.get(ws.id)||{};workspaceDir=resources.workspaceDir||null;workspaceResources=resources.workspaceResources||[];workspaceScanStats=resources.workspaceScanStats||null;$('#goal-input').value=ws.projectDraft?.goal||'';const mode=Z.uiModes.normalize(ws.projectDraft?.uiMode||Z.fullCard.meta(ws.card).uiMode);const radio=document.querySelector('input[name="rp-ui-mode"][value="'+mode+'"]');if(radio)radio.checked=true;localStorage.setItem('zaojingtai.ui-mode',mode);Z.fullCard.feedback.restoreProject?.(ws.projectDraft?.progress);$('#plan-output').hidden=true;renderWorkspace();setCreatorTab(ws.projectDraft?.tab||'overview');renderWorkspaceLibrary();renderHomeWorkspacePrep();Z.studioUi?.markSaved();document.dispatchEvent(new Event('rp-card-changed'));},
+    activateProject:async project=>{const avatar=project.coverBase64?Uint8Array.from(atob(project.coverBase64),c=>c.charCodeAt(0)):(project.sourceType==='png'?await Z.workspace.loadAvatar(project.id):null);ws=clone(project);if(!ws.card)ws.card=blank();sourceAvatar=avatar;pendingDiff=null;lastDiffRequest=null;pendingModuleImport=null;pendingSnapshotRestore=null;pendingCardLoad=null;$('#diff-panel')?.classList.remove('is-open');const resources=projectResources.get(ws.id)||{};workspaceDir=resources.workspaceDir||null;workspaceResources=resources.workspaceResources||[];workspaceScanStats=resources.workspaceScanStats||null;$('#goal-input').value=ws.projectDraft?.goal||'';const mode=Z.uiModes.normalize(ws.projectDraft?.uiMode||Z.fullCard.meta(ws.card).uiMode);const radio=document.querySelector('input[name="rp-ui-mode"][value="'+mode+'"]');if(radio)radio.checked=true;localStorage.setItem('zaojingtai.ui-mode',mode);Z.fullCard.feedback.restoreProject?.(ws.projectDraft?.progress);if(ws.projectDraft?.progress)Z.fullCard.feedback.refreshProgressFromCard?.(ws.card);$('#plan-output').hidden=true;renderWorkspace();setCreatorTab(ws.projectDraft?.tab||'overview');renderWorkspaceLibrary();renderHomeWorkspacePrep();Z.studioUi?.markSaved();document.dispatchEvent(new Event('rp-card-changed'));},
     activateSource:(info,evidence)=>{sourceEvidence=clone(evidence);sourceMode=info.name+' 源码 '+info.id;renderSourceStatus();},sourceContext:(query,purpose)=>buildAiEvidence(query,purpose),isTaskRunning:()=>!!streamController,navigate,
     setCreatorTab,clearLoreFilters,applyLoreFilters,getAiReferenceSummary:()=>workspaceResources.filter(x=>x.selected).map(x=>x.name),getCard:()=>collectForm(),getCover:()=>sourceAvatar,hasCover:()=>!!sourceAvatar,getApiSettings:()=>settings(),
     generate:resume=>generateInitial(resume),generateCover,audit:()=>runAuditNow(),toast,
