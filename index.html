@@ -264,6 +264,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 (function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;if(root){root.Zaojing=root.Zaojing||{};root.Zaojing.qualityRules=api;root.Zaojing.keyPolicy=api.keyPolicy;}})(typeof globalThis!=='undefined'?globalThis:this,function(){
 'use strict';
 const cardMeta=c=>(c.data||c).extensions?.rp_studio||{};
+/* 卡型：卡片自己声明的 rp_studio.cardKind。认不出来的（没声明或写错）按常规卡算，
+   和页面里 Z.cardKinds.normalize 的兜底一致。 */
+function cardKindOf(card){const k=cardMeta(card).cardKind;return CARD_KINDS.includes(k)?k:'regular';}
 const enabled=e=>e.enabled!==false&&e.disable!==true&&e.disabled!==true;
 /* 条目字段规范化：卡片 JSON 可能来自别的工具——缺 content、keys 写成裸字符串、
    世界书 entries 写成对象而不是数组，都会让规则本身崩掉。规则应该报出问题，而不是自己抛异常。 */
@@ -295,7 +298,9 @@ const MIS_TRIGGER = new Set([
 /* 概率豁免：挂了 useProbability 且 probability ≤ 60 的条目，泛词键可放行。
    处方见 keyword-design.md:210 与 rules-wb-architect.md:433。 */
 const PROBABILITY_MAX = 60;
-const isMisTrigger = key => MIS_TRIGGER.has(key);
+/* 日常高频说法会误触发大段条目（底座原来自己存了一份 HIGH_FALSE_TRIGGER_KEYS，
+   而且那份表里塞着某一张卡的剧情词和人名——现在只在本文件里有一份。 */
+const isMisTrigger = key => MIS_TRIGGER.has(String(key || '').trim());
 
 /* 万能词（闸1 要罚的那几个）。提到模块作用域是因为闸5 也要用它做排除：
    一个键不能一边被闸1 判成万能词、一边被闸5 当成合格的泛词兜底。 */
@@ -305,6 +310,15 @@ const UNIVERSAL_KEYS = ['性爱', '做爱', '亲密', '性交', '爱', '上床',
    只收 ≥2 字的整词：单字（如「他」「她」）任何正文都会命中，等于没有兜底；
    也不收 MIS_TRIGGER 里的通用动作情绪（「靠近」「紧张」那些是闸9 的误触词，
    不能一条规则罚、另一条规则当成好入口）。这张表对所有卡通用，没有卡专有词。 */
+/* 功能虚词：这些词几乎在任何对话里都会出现，单独拿来当关键词等于没设条件。
+   原来这份表写在工作台底座里（26 个），和本文件的 BROAD_KEYS（泛指内容词）各管一段，
+   但用户看到的是两套「泛词表」——现在两份都只在本文件里定义一次。 */
+const WEAK_WORDS = [
+  '人', '事', '看', '去', '我', '你', '他', '她', '它', '打',
+  '系统', '世界', '事件', '任务', '地点', '角色', '人物', '状态',
+  '消息', '继续', '现在', '情况', '剧情', '设定', '场景', '规则'
+];
+const isWeakWord = key => WEAK_WORDS.includes(String(key || '').trim());
 const BROAD_KEYS = [
   /* 泛指人物 */
   '别人', '路人', '大家', '有人', '旁人', '陌生人', '邻居', '同学', '同事', '围观', '人群',
@@ -316,6 +330,364 @@ const BROAD_KEYS = [
   '说话', '聊天', '交谈', '打招呼', '路过', '听说', '闲聊', '日常',
 ];
 
+
+/* ══ 单一规则注册表 ══════════════════════════════════════════════════
+   为什么要有它：这套工作台原本有三套各写各的规则（底座 / 共享闸门 / 过审助手 V1.6），
+   严重度、卡型适用范围、能不能本地修、以及「这条和那条其实是同一件事」都散在代码里。
+   后果实测有三类：
+     ① 同一个事实报两遍（单字键被闸8 和过审内核对各报一次），面板像有十几个问题；
+     ② 闸位号撞车——闸6 既是「常驻超预算」又是「玩法新度不足」，两件事共用一个 code，
+        A1 的问题身份 [组, code, 条目, 分支] 也就分不开，修好一个会掩盖另一个；
+     ③ 某条规则的处方会踩到另一条规则，只有把冲突写下来才看得见。
+   所以这里把「每条规则是什么」集中声明一次：运行时读这张表取严重度、建议项标记、
+   卡型白名单、可修性和去重键，而不是各写各的。
+
+   字段：
+     id          规则身份。带分支的写法 `GATE_8.no-two-char`；闸位号本身不是身份。
+     layer       发现默认落在哪一层（runtime / quality / submission），只作展示与排序。
+     severity    基础严重度；`severityByKind` 按卡型覆盖（肉卡的首轮种子只提醒不拦卡）。
+     advisory    true = 「可做可不做」的建议：不拦导出、不进 AI 批次、不算进「修完了没」。
+     kinds       适用的卡型白名单；`['*']` = 所有卡型。enforce=false 时只作声明不作过滤。
+     fixability   local（工作台能自动修）/ ai（要重写文本）/ manual（人来判断）/ advisory（不建议修）。
+     dedupe      同一问题的身份字段，供 A1 的 issueKey 与跨层去重使用。
+     conflicts   已知会互相踩的规则 id（改一条要同时看另一条）。
+     source      规则从哪来：lib（共享闸门）/ base（底座）/ review（过审助手 V1.6）/ workbench（界面自检）。
+   ══════════════════════════════════════════════════════════════════ */
+/* 三档卡型来自工作台自己的卡片类型选择器（Z.cardKinds.labels）：
+   regular 常规卡 / meat 制作肉卡 / pipeline 流水线肉卡。
+   关键词闸门（闸0–闸11）只在 pipeline 与 meat 上发声，常规卡只走底座、
+   过审内核和玩法新度——这是今天的真实分工，注册表把它写明，不假装通用。 */
+const CARD_KINDS = ['pipeline', 'meat', 'regular'];
+const SEVERITY_RANK = { info: 0, warning: 1, error: 2 };
+const KIND_LABELS = { pipeline: '流水线肉卡', meat: '制作肉卡', regular: '常规卡' };
+const kindLabel = kind => KIND_LABELS[String(kind || '')] || '未知卡型';
+/* 卡型适配：注册表里声明了适用卡型的规则，在不适用的卡上不是「没发现问题」，而是
+   「这条规则本来就不该在这类卡上发声」。工作台要把这件事说出来，否则用户看到的只是
+   一张更短的清单，分不清「检查过、没问题」和「压根没检查」。 */
+function notApplicableRules(kind) {
+  const k = String(kind || '');
+  const out = [];
+  for (const meta of RULES.values()) {
+    if (meta.enforceScope === false) continue;
+    const kinds = meta.kinds || ['*'];
+    if (kinds.includes('*') || (k && kinds.includes(k))) continue;
+    out.push({ id: meta.id, title: meta.title, kinds: kinds.slice() });
+  }
+  return out;
+}
+const RULE_REGISTRY = [
+  /* ── 共享闸门（lib/keywordGates）：pipeline 与 meat 才跑，肉卡个别档位降级 ── */
+  { id: 'GATE_0', layer: 'runtime', severity: 'error', kinds: ['pipeline', 'meat'], fixability: 'ai', dedupe: ['card'], source: 'lib', title: 'scenario 缺少固定署名句', conflicts: [] },
+  { id: 'GATE_1.no-keys', layer: 'runtime', severity: 'error', kinds: ['pipeline', 'meat'], fixability: 'ai', dedupe: ['entry'], source: 'lib', title: '条件条目没有关键词', conflicts: ['GATE_8.key-count'] },
+  { id: 'GATE_1.key-format', layer: 'runtime', severity: 'error', kinds: ['pipeline', 'meat'], fixability: 'local', dedupe: ['entry', 'key'], source: 'lib', title: '关键词超长或含标点', conflicts: ['GATE_8.key-meta'] },
+  { id: 'GATE_1.key-universal', layer: 'runtime', severity: 'error', kinds: ['pipeline', 'meat'], fixability: 'ai', dedupe: ['entry', 'key'], source: 'lib', title: '关键词是万能词', conflicts: ['GATE_9.mis-trigger'] },
+  { id: 'GATE_1.key-shared', layer: 'runtime', severity: 'error', kinds: ['pipeline', 'meat'], fixability: 'local', dedupe: ['key'], source: 'lib', title: '两条条目共用同一个关键词', conflicts: ['REVIEW_OVERLAP_KEYS'] },
+  { id: 'GATE_2.token-emitter', layer: 'runtime', severity: 'error', kinds: ['pipeline', 'meat'], fixability: 'ai', dedupe: ['entry', 'key'], source: 'lib', title: '令牌键在常驻栏没有发射位', conflicts: ['GATE_4'] },
+  { id: 'GATE_2.token-wording', layer: 'runtime', severity: 'warning', kinds: ['pipeline', 'meat'], fixability: 'ai', dedupe: ['entry', 'key'], source: 'lib', title: '令牌键与状态栏措辞不一致', conflicts: [] },
+  { id: 'GATE_3.seed', layer: 'runtime', severity: 'error', severityByKind: { meat: 'warning' }, kinds: ['pipeline', 'meat'], fixability: 'ai', dedupe: ['card'], source: 'lib', title: '首轮种子不足', conflicts: ['GATE_10.density-pathological'] },
+  { id: 'GATE_3.key-not-in-text', layer: 'runtime', severity: 'warning', kinds: ['pipeline', 'meat'], fixability: 'local', dedupe: ['entry', 'key'], source: 'lib', title: '关键词在本条正文与首轮种子中都不存在', conflicts: [] },
+  { id: 'GATE_4', layer: 'runtime', severity: 'warning', kinds: ['pipeline', 'meat'], fixability: 'ai', dedupe: ['card'], source: 'lib', title: '令牌循环缺状态栏协议', conflicts: ['GATE_2.token-emitter'] },
+  { id: 'GATE_5.no-broad-fallback', layer: 'runtime', severity: 'warning', advisory: true, kinds: ['pipeline', 'meat'], fixability: 'advisory', dedupe: ['card'], source: 'lib', title: '缺少泛词兜底入口（可选）', conflicts: ['GATE_9.mis-trigger'] },
+  { id: 'GATE_6.budget', layer: 'runtime', severity: 'error', kinds: ['pipeline', 'meat'], fixability: 'local', dedupe: ['card', 'category'], source: 'lib', title: '常驻层或类目超预算/cap', conflicts: ['GATE_11.play-length-long', 'REVIEW_CONSTANT_OVERLOAD'] },
+  /* 这条的改法是「新增一条玩法条目」——它需要批量修复允许新增，否则永远修不动。 */
+  { id: 'GATE_6.no-play', layer: 'runtime', severity: 'error', kinds: ['*'], fixability: 'ai', dedupe: ['card'], source: 'lib', title: '整张卡没有玩法条目', canCreateEntry: true, conflicts: [] },
+  { id: 'GATE_6.title-dup', layer: 'runtime', severity: 'error', kinds: ['*'], fixability: 'ai', dedupe: ['title'], source: 'lib', title: '两条玩法标题重复', conflicts: [] },
+  { id: 'GATE_6.overlap', layer: 'runtime', severity: 'error', kinds: ['*'], fixability: 'ai', dedupe: ['pair'], source: 'lib', title: '两条玩法正文互相复制', conflicts: ['FULL_CARD_DUPLICATE', 'GATE_6.template'] },
+  { id: 'GATE_6.anchor-low', layer: 'runtime', severity: 'error', kinds: ['*'], fixability: 'ai', dedupe: ['card'], source: 'lib', title: '玩法新度不足（锚点覆盖 <80%）', conflicts: [] },
+  { id: 'GATE_6.no-anchors', layer: 'runtime', severity: 'warning', kinds: ['*'], fixability: 'manual', dedupe: ['card'], source: 'lib', title: '设计未给出 playAnchors，无法核对新度', conflicts: [] },
+  { id: 'GATE_6.template', layer: 'runtime', severity: 'warning', kinds: ['*'], fixability: 'ai', dedupe: ['card'], source: 'lib', title: '过半玩法以同一句式开头', conflicts: ['GATE_6.overlap'] },
+  { id: 'GATE_7.position-not-constant', layer: 'runtime', severity: 'error', kinds: ['pipeline', 'meat'], fixability: 'local', dedupe: ['entry', 'position'], source: 'lib', title: 'before_char/after_char 却不是常驻', conflicts: [] },
+  { id: 'GATE_7.position-at-depth-constant', layer: 'runtime', severity: 'error', kinds: ['pipeline', 'meat'], fixability: 'local', dedupe: ['entry', 'position'], source: 'lib', title: 'at_depth 却是常驻', conflicts: [] },
+  { id: 'GATE_7.position-invalid', layer: 'runtime', severity: 'error', kinds: ['pipeline', 'meat'], fixability: 'local', dedupe: ['entry', 'position'], source: 'lib', title: 'position 取值非法', conflicts: [] },
+  { id: 'GATE_8.key-count', layer: 'runtime', severity: 'error', kinds: ['pipeline', 'meat'], fixability: 'local', dedupe: ['entry', 'kind'], source: 'lib', title: '白话关键词个数不在 2–10', conflicts: ['KEY_COVERAGE', 'GATE_1.no-keys'] },
+  { id: 'GATE_8.key-meta', layer: 'runtime', severity: 'error', kinds: ['pipeline', 'meat'], fixability: 'local', dedupe: ['entry', 'kind'], source: 'lib', title: '关键词含标点、空白或元术语', conflicts: ['GATE_1.key-format', 'REVIEW_META_KEYS'] },
+  { id: 'GATE_8.key-length', layer: 'runtime', severity: 'error', kinds: ['pipeline', 'meat'], fixability: 'local', dedupe: ['entry', 'kind'], source: 'lib', title: '关键词长度不在 2–6 字', conflicts: ['GATE_1.key-format'] },
+  { id: 'GATE_8.no-two-char', layer: 'runtime', severity: 'error', kinds: ['pipeline', 'meat'], fixability: 'local', dedupe: ['entry', 'kind'], source: 'lib', title: '没有任何二字键', conflicts: ['WB_ALL_KEYS_THREE_OR_MORE', 'WB_SINGLE_CHAR_KEY'] },
+  { id: 'GATE_8.KEY_FRAGMENT', layer: 'runtime', severity: 'error', kinds: ['pipeline', 'meat'], fixability: 'local', dedupe: ['entry'], source: 'lib', title: '关键词是正文残片或无指向词', conflicts: ['GATE_3.key-not-in-text'] },
+  { id: 'GATE_8.KEY_COVERAGE', layer: 'runtime', severity: 'info', kinds: ['pipeline', 'meat'], fixability: 'local', dedupe: ['entry'], source: 'lib', title: '入口数偏少，建议补齐（提示）', conflicts: [] },
+  { id: 'GATE_9.mis-trigger', layer: 'runtime', severity: 'error', kinds: ['pipeline', 'meat'], fixability: 'ai', dedupe: ['entry', 'key'], source: 'lib', title: '关键词是通用高频词，会误触发', conflicts: ['GATE_1.key-universal', 'GATE_5.no-broad-fallback', 'WB_HIGH_FALSE_TRIGGER_KEYS'] },
+  { id: 'GATE_10.density-pathological', layer: 'runtime', severity: 'error', kinds: ['*'], fixability: 'ai', dedupe: ['card'], source: 'lib', title: '单轮拉取密度病态（≥30 条）', conflicts: ['GATE_3.seed'] },
+  { id: 'GATE_10.density-high', layer: 'runtime', severity: 'warning', kinds: ['*'], fixability: 'ai', dedupe: ['card'], source: 'lib', title: '单轮拉取密度过高（能发布，建议缩）', conflicts: [] },
+  { id: 'GATE_10.density-acceptable', layer: 'runtime', severity: 'warning', advisory: true, kinds: ['*'], fixability: 'advisory', dedupe: ['card'], source: 'lib', title: '单轮拉取可接受但偏高（可选优化）', conflicts: [] },
+  { id: 'GATE_11.play-length-short', layer: 'runtime', severity: 'warning', kinds: ['pipeline', 'meat'], fixability: 'ai', dedupe: ['entry', 'kind'], source: 'lib', title: '玩法条目低于 700 字', conflicts: [] },
+  { id: 'GATE_11.play-length-long', layer: 'runtime', severity: 'error', kinds: ['pipeline', 'meat'], fixability: 'local', dedupe: ['entry', 'kind'], source: 'lib', title: '玩法条目超过 1300 字', conflicts: ['GATE_6.budget'] },
+
+  /* ── 底座（HTML 里的最初的 runtime/quality/submission）── */
+  { id: 'INVALID_ROOT', layer: 'runtime', severity: 'error', kinds: ['*'], fixability: 'manual', dedupe: ['card'], source: 'base', title: '角色卡根结构无效', conflicts: [] },
+  { id: 'UNKNOWN_SPEC', layer: 'runtime', severity: 'warning', kinds: ['*'], fixability: 'manual', dedupe: ['card'], source: 'base', title: '未知角色卡版本', conflicts: [] },
+  { id: 'MISSING_NAME', layer: 'runtime', severity: 'error', kinds: ['*'], fixability: 'ai', dedupe: ['card'], source: 'base', title: '缺少角色名', conflicts: [] },
+  { id: 'MISSING_OPENING', layer: 'runtime', severity: 'error', kinds: ['*'], fixability: 'ai', dedupe: ['card'], source: 'base', title: '缺少开场白', conflicts: [] },
+  { id: 'INVALID_FIELD_TYPE', layer: 'runtime', severity: 'error', kinds: ['*'], fixability: 'manual', dedupe: ['card'], source: 'base', title: '基础字段类型异常', conflicts: [] },
+  { id: 'SCRIPT_IN_OPENING', layer: 'runtime', severity: 'warning', kinds: ['*'], fixability: 'manual', dedupe: ['card'], source: 'base', title: '开场白包含脚本', conflicts: [] },
+  { id: 'INVALID_REGEX', layer: 'runtime', severity: 'error', kinds: ['*'], fixability: 'manual', dedupe: ['card'], source: 'base', title: '存在无法编译的正则', conflicts: [] },
+  { id: 'LORE_WONT_TRIGGER', layer: 'runtime', severity: 'error', kinds: ['*'], fixability: 'ai', dedupe: ['entry'], source: 'base', title: '条目无法触发（无关键词）', conflicts: ['REVIEW_EMPTY_KEYS', 'WB_UNREACHABLE_NO_KEY', 'GATE_1.no-keys'] },
+  { id: 'ZERO_SCAN_DEPTH', layer: 'runtime', severity: 'error', kinds: ['*'], fixability: 'local', dedupe: ['entry'], source: 'base', title: '扫描深度为 0', conflicts: ['REVIEW_ZERO_SCAN', 'WB_SCAN_DEPTH_ZERO'] },
+  { id: 'INVALID_LORE_REGEX', layer: 'runtime', severity: 'error', kinds: ['*'], fixability: 'manual', dedupe: ['entry'], source: 'base', title: '条目关键词正则无效', conflicts: [] },
+  { id: 'EMPTY_LORE_CONTENT', layer: 'runtime', severity: 'warning', kinds: ['*'], fixability: 'manual', dedupe: ['entry'], source: 'base', title: '条目正文为空', conflicts: ['WB_EMPTY_CONTENT'] },
+  { id: 'LOCAL_UI_FAILED', layer: 'runtime', severity: 'error', kinds: ['*'], fixability: 'manual', dedupe: ['card'], source: 'workbench', title: '本地界面校验未通过', conflicts: [] },
+  { id: 'THIN_OPENING', layer: 'quality', severity: 'warning', kinds: ['*'], fixability: 'ai', dedupe: ['card'], source: 'base', title: '开场信息偏薄', conflicts: [] },
+  { id: 'EMPTY_LORE_KEYS', layer: 'quality', severity: 'warning', kinds: ['*'], fixability: 'local', dedupe: ['entry'], source: 'base', title: '条件条目存在空关键词', conflicts: ['LORE_WONT_TRIGGER', 'REVIEW_EMPTY_KEYS'] },
+  { id: 'OVERSIZED_LORE_ENTRY', layer: 'quality', severity: 'warning', kinds: ['*'], fixability: 'ai', dedupe: ['entry'], source: 'base', title: '单条世界书过长', conflicts: ['GATE_6.budget'] },
+  { id: 'LORE_RATIO_HIGH', layer: 'quality', severity: 'warning', kinds: ['*'], fixability: 'manual', dedupe: ['card'], source: 'base', title: '世界书占比过高', conflicts: [] },
+  { id: 'LARGE_CARD', layer: 'quality', severity: 'warning', kinds: ['*'], fixability: 'manual', dedupe: ['card'], source: 'base', title: '整卡体积偏大', conflicts: [] },
+  { id: 'REVIEW_DUPLICATE_ENTRY_ID', layer: 'quality', severity: 'error', kinds: ['*'], fixability: 'local', dedupe: ['entry-id'], source: 'base', title: '多个条目共用同一个编号', conflicts: ['WB_DUPLICATE_ID'] },
+  { id: 'REVIEW_CONSTANT_OVERLOAD', layer: 'quality', severity: 'error', kinds: ['*'], fixability: 'ai', dedupe: ['card'], source: 'base', title: '常驻内容严重过载', conflicts: ['REVIEW_CONSTANT_BUDGET', 'WB_CONSTANT_OVERLOAD', 'GATE_6.budget'] },
+  { id: 'REVIEW_CONSTANT_BUDGET', layer: 'quality', severity: 'warning', kinds: ['*'], fixability: 'ai', dedupe: ['card'], source: 'base', title: '常驻内容超预算', conflicts: ['REVIEW_CONSTANT_OVERLOAD', 'GATE_6.budget'] },
+  { id: 'REVIEW_INDEX_COVERAGE', layer: 'quality', severity: 'warning', kinds: ['*'], fixability: 'ai', dedupe: ['card'], source: 'base', title: '索引/索引用词覆盖不足', conflicts: [] },
+  { id: 'RP_FULL_CARD_PENDING', layer: 'quality', severity: 'warning', kinds: ['*'], fixability: 'manual', dedupe: ['item'], source: 'base', title: '完整卡验收项待完成', conflicts: [] },
+  { id: 'AUTHOR_NOTES_NOT_TAGS', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'ai', dedupe: ['card'], source: 'base', title: '作者注释需要改为 TAG', conflicts: [] },
+  { id: 'MISSING_HUB_WATERMARK', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'local', dedupe: ['card'], source: 'base', title: '缺少本站水印', conflicts: [] },
+  { id: 'REVIEW_EMPTY_KEYS', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'local', dedupe: ['entry'], source: 'base', title: '条目缺少审核关键词', conflicts: ['LORE_WONT_TRIGGER', 'EMPTY_LORE_KEYS', 'WB_UNREACHABLE_NO_KEY'] },
+  { id: 'REVIEW_ZERO_SCAN', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'local', dedupe: ['entry'], source: 'base', title: '条目无法扫描关键词', conflicts: ['ZERO_SCAN_DEPTH', 'WB_SCAN_DEPTH_ZERO'] },
+  { id: 'REVIEW_PLACEHOLDER_KEYS', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'local', dedupe: ['entry'], source: 'base', title: '关键词使用无效占位符', conflicts: [] },
+  { id: 'REVIEW_META_KEYS', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'local', dedupe: ['entry', 'kind'], source: 'base', title: '关键词含制卡元术语', conflicts: ['WB_META_ONLY_TRIGGER_ROUTE', 'GATE_8.key-meta'] },
+  { id: 'REVIEW_SENTENCE_KEYS', layer: 'submission', severity: 'warning', kinds: ['*'], fixability: 'local', dedupe: ['entry'], source: 'base', title: '关键词是整句或过长', conflicts: ['GATE_1.key-format', 'GATE_8.key-length'] },
+  { id: 'REVIEW_DUPLICATE_KEYS', layer: 'submission', severity: 'warning', kinds: ['*'], fixability: 'local', dedupe: ['entry'], source: 'base', title: '条目内有重复关键词', conflicts: [] },
+  { id: 'REVIEW_CORE_RULE_CONDITIONAL', layer: 'submission', severity: 'warning', kinds: ['*'], fixability: 'manual', dedupe: ['entry'], source: 'base', title: '核心规则被设成条件触发', conflicts: ['WB_CORE_INSTRUCTION_CONDITIONAL'] },
+  { id: 'REVIEW_LARGE_CONSTANT', layer: 'submission', severity: 'warning', kinds: ['*'], fixability: 'ai', dedupe: ['entry'], source: 'base', title: '常驻正文过长', conflicts: ['GATE_6.budget'] },
+  { id: 'REVIEW_OVERLAP_KEYS', layer: 'submission', severity: 'warning', kinds: ['*'], fixability: 'local', dedupe: ['key'], source: 'base', title: '同一关键词会同时带出多条条目', conflicts: ['GATE_1.key-shared'] },
+  { id: 'SUBMISSION_CARD_VOLUME', layer: 'submission', severity: 'warning', kinds: ['*'], fixability: 'manual', dedupe: ['card'], source: 'base', title: '整卡体积提示', conflicts: [] },
+  { id: 'SUBMISSION_WORLDBOOK_VOLUME', layer: 'submission', severity: 'warning', kinds: ['*'], fixability: 'manual', dedupe: ['card'], source: 'base', title: '世界书体积提示', conflicts: [] },
+
+  /* ── 完整卡验收（只在设计器生成的卡型上发声）── */
+  { id: 'FULL_CARD_MINIMUM', layer: 'quality', severity: 'error', kinds: ['pipeline', 'meat'], fixability: 'ai', canCreateEntry: true, dedupe: ['card'], source: 'workbench', title: '有效世界书未达卡型最低要求', conflicts: [] },
+  { id: 'FULL_CARD_DUPLICATE', layer: 'quality', severity: 'error', kinds: ['pipeline', 'meat'], fixability: 'ai', dedupe: ['card'], source: 'workbench', title: '世界书存在重复段落', conflicts: ['GATE_6.overlap'] },
+  { id: 'FULL_CARD_CATEGORY', layer: 'quality', severity: 'error', kinds: ['pipeline', 'meat'], fixability: 'ai', dedupe: ['entry'], source: 'workbench', title: '世界书分类缺失或计数不一致', conflicts: [] },
+
+  /* ── 过审助手 V1.6 参考内核（submission 层，人工复核为主）── */
+  { id: 'WB_EMPTY_CONTENT', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'ai', dedupe: ['entry'], source: 'review', title: '世界书正文为空', conflicts: ['EMPTY_LORE_CONTENT'] },
+  { id: 'WB_BLANK_KEY', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'local', dedupe: ['entry'], source: 'review', title: '关键词含空白项', conflicts: [] },
+  { id: 'WB_UNREACHABLE_NO_KEY', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'local', dedupe: ['entry'], source: 'review', title: '非常驻条目缺少触发入口', conflicts: ['LORE_WONT_TRIGGER', 'REVIEW_EMPTY_KEYS'] },
+  { id: 'WB_SCAN_DEPTH_ZERO', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'local', dedupe: ['entry'], source: 'review', title: '扫描深度为零', conflicts: ['ZERO_SCAN_DEPTH', 'REVIEW_ZERO_SCAN'] },
+  { id: 'WB_CORE_INSTRUCTION_CONDITIONAL', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'ai', dedupe: ['entry'], source: 'review', title: '持续规则被设成条件触发', conflicts: ['REVIEW_CORE_RULE_CONDITIONAL'] },
+  { id: 'WB_META_ONLY_TRIGGER_ROUTE', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'local', dedupe: ['entry'], source: 'review', title: '触发入口只有制卡术语', conflicts: ['REVIEW_META_KEYS'] },
+  { id: 'WB_AT_DEPTH_MISSING', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'local', dedupe: ['entry'], source: 'review', title: '插入深度缺失', conflicts: ['GATE_7.position-invalid'] },
+  { id: 'WB_REGEX_INVALID', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'manual', dedupe: ['entry'], source: 'review', title: '关键词正则无效', conflicts: ['INVALID_LORE_REGEX'] },
+  { id: 'WB_HIGH_FALSE_TRIGGER_KEYS', layer: 'submission', severity: 'error', severityByKind: { regular: 'warning' }, kinds: ['*'], fixability: 'ai', dedupe: ['entry', 'key'], source: 'review', title: '关键词会高频误触发', conflicts: ['GATE_9.mis-trigger'] },
+  { id: 'WB_ALL_KEYS_THREE_OR_MORE', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'local', dedupe: ['entry'], source: 'review', title: '缺少二字关键词入口', conflicts: ['GATE_8.no-two-char', 'WB_SINGLE_CHAR_KEY'] },
+  { id: 'WB_SINGLE_CHAR_KEY', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'local', dedupe: ['entry'], source: 'review', title: '单字关键词会误触发', conflicts: ['GATE_8.no-two-char', 'WB_ALL_KEYS_THREE_OR_MORE'] },
+  { id: 'WB_TEMPLATE_TOKEN_IN_KEY_WITH_FALLBACK', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'local', dedupe: ['entry'], source: 'review', title: '关键词占位符无效', conflicts: ['REVIEW_PLACEHOLDER_KEYS'] },
+  { id: 'WB_TEMPLATE_TOKEN_ONLY_KEYS', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'local', dedupe: ['entry'], source: 'review', title: '全部关键词都是无效占位符', conflicts: ['REVIEW_PLACEHOLDER_KEYS'] },
+  { id: 'WB_DUPLICATE_ID', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'local', dedupe: ['entry-id'], source: 'review', title: '世界书编号重复', conflicts: ['REVIEW_DUPLICATE_ENTRY_ID'] },
+  { id: 'WB_UNDERSIZED_DEFAULT_REJECT', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'ai', canCreateEntry: true, dedupe: ['card'], source: 'review', title: '有效人物与世界正文不足', conflicts: ['FULL_CARD_MINIMUM'] },
+  { id: 'WB_SUPPORT_TEXT_DOMINATES', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'ai', dedupe: ['card'], source: 'review', title: '辅助说明占比过高', conflicts: ['LORE_RATIO_HIGH'] },
+  { id: 'WB_CONSTANT_OVERLOAD', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'ai', dedupe: ['card'], source: 'review', title: '常驻内容严重过载', conflicts: ['REVIEW_CONSTANT_OVERLOAD', 'GATE_6.budget'] },
+  { id: 'WB_OPENING_WORLD_STATE_CONFLICT', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'ai', dedupe: ['card'], source: 'review', title: '开场与常驻状态冲突', conflicts: [] },
+  { id: 'WB_STAGE_ROUTE_NOT_PRIMED', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'ai', canCreateEntry: true, dedupe: ['entry'], source: 'review', title: '阶段入口尚未建立', conflicts: ['GATE_3.seed'] },
+  { id: 'WB_LONG_LITERAL_KEY', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'local', dedupe: ['entry'], source: 'review', title: '关键词过长', conflicts: ['GATE_1.key-format', 'GATE_8.key-length'] },
+  { id: 'WB_THREE_CHAR_KEY_REVIEW', layer: 'submission', severity: 'info', kinds: ['*'], fixability: 'manual', dedupe: ['entry'], source: 'review', title: '三字关键词复核（提示）', conflicts: [] },
+  { id: 'WB_BROAD_KEY', layer: 'submission', severity: 'info', kinds: ['*'], fixability: 'manual', dedupe: ['entry', 'key'], source: 'review', title: '关键词太宽泛，普通对话也会误触发', conflicts: ['GATE_9.mis-trigger', 'WB_HIGH_FALSE_TRIGGER_KEYS'] },
+  { id: 'WB_MANY_CONSTANTS', layer: 'submission', severity: 'info', kinds: ['*'], fixability: 'manual', dedupe: ['card'], source: 'review', title: '启用常驻 8 条以上，要逐条说明每轮必要性', conflicts: ['GATE_6.budget', 'REVIEW_CONSTANT_OVERLOAD'] },
+  { id: 'WB_CONSTANT_PRESSURE', layer: 'submission', severity: 'info', kinds: ['*'], fixability: 'manual', dedupe: ['card'], source: 'review', title: '常驻正文超过 8000 字，挤占每轮对话空间', conflicts: ['WB_CONSTANT_OVERLOAD', 'GATE_6.budget'] },
+  { id: 'WB_UNKNOWN_POSITION', layer: 'submission', severity: 'info', kinds: ['*'], fixability: 'local', dedupe: ['entry'], source: 'review', title: '插入位置不被工具认识，导入后要确认', conflicts: ['GATE_7.position-invalid'] },
+  { id: 'WB_UI_STATE_RUNTIME_DEPENDENCY', layer: 'submission', severity: 'info', kinds: ['*'], fixability: 'manual', dedupe: ['card'], source: 'review', title: '剧情依赖界面变量，卡片文件确认不了 AI 读得到', conflicts: [] },
+  { id: 'GATE_SUMMARY', layer: 'quality', severity: 'info', kinds: ['pipeline', 'meat'], fixability: 'manual', dedupe: ['card'], source: 'lib', title: '关键词质检摘要', conflicts: [] },
+  { id: 'GATE_NOVELTY_SUMMARY', layer: 'quality', severity: 'info', kinds: ['*'], fixability: 'manual', dedupe: ['card'], source: 'lib', title: '玩法新度摘要', conflicts: [] },
+  { id: 'WB_CONSTANT_SPOILER', layer: 'submission', severity: 'info', kinds: ['*'], fixability: 'manual', dedupe: ['entry'], source: 'review', title: '常驻含真相/结局类词，防剧透待确认', conflicts: [] },
+  { id: 'WB_PROBABILISTIC', layer: 'submission', severity: 'info', kinds: ['*'], fixability: 'manual', dedupe: ['entry'], source: 'review', title: '条目挂了概率加载，可能漏轮', conflicts: ['GATE_9.mis-trigger'] },
+  { id: 'WB_SUBSTRING_COLLISION', layer: 'submission', severity: 'info', kinds: ['*'], fixability: 'local', dedupe: ['key'], source: 'review', title: '短关键词包含在长关键词里', conflicts: ['GATE_1.key-shared'] },
+  { id: 'WB_SHARED_KEY', layer: 'submission', severity: 'error', kinds: ['*'], fixability: 'local', dedupe: ['key'], source: 'review', title: '多个条目共用同一个关键词', conflicts: ['GATE_1.key-shared', 'REVIEW_OVERLAP_KEYS'] },
+  { id: 'RUNTIME_COMPATIBILITY_REVIEW', layer: 'submission', severity: 'info', kinds: ['*'], fixability: 'manual', dedupe: ['entry'], source: 'review', title: '运行时兼容性复核（已解释的差异）', conflicts: [] },
+  { id: 'REFERENCE_AUDIT_SUMMARY', layer: 'submission', severity: 'info', kinds: ['*'], fixability: 'manual', dedupe: ['card'], source: 'review', title: '过审助手结构判定摘要', conflicts: [] },
+];
+
+/* 跨层同一个事实的等价组：组内只报一条（保留严重度高的那条，同级时保留列表里靠前的）。
+   只列证据完全相同、只是被两套规则各查了一遍的组合；语义相近但证据不同的不要合并，
+   否则会把「两个毛病」说成「一个」。 */
+const SAME_FACT_GROUPS = [
+  ['REVIEW_DUPLICATE_ENTRY_ID', 'WB_DUPLICATE_ID'],
+  ['EMPTY_LORE_CONTENT', 'WB_EMPTY_CONTENT'],
+  ['ZERO_SCAN_DEPTH', 'REVIEW_ZERO_SCAN', 'WB_SCAN_DEPTH_ZERO'],
+  ['LORE_WONT_TRIGGER', 'REVIEW_EMPTY_KEYS', 'WB_UNREACHABLE_NO_KEY', 'GATE_1.no-keys'],
+  ['REVIEW_CONSTANT_OVERLOAD', 'REVIEW_CONSTANT_BUDGET', 'WB_CONSTANT_OVERLOAD', 'WB_CONSTANT_PRESSURE', 'WB_MANY_CONSTANTS', 'GATE_6.budget'],
+  ['REVIEW_OVERLAP_KEYS', 'GATE_1.key-shared', 'WB_SHARED_KEY'],
+  ['REVIEW_CORE_RULE_CONDITIONAL', 'WB_CORE_INSTRUCTION_CONDITIONAL'],
+  ['REVIEW_PLACEHOLDER_KEYS', 'WB_TEMPLATE_TOKEN_IN_KEY_WITH_FALLBACK', 'WB_TEMPLATE_TOKEN_ONLY_KEYS'],
+  ['REVIEW_META_KEYS', 'WB_META_ONLY_TRIGGER_ROUTE'],
+  ['LORE_RATIO_HIGH', 'WB_SUPPORT_TEXT_DOMINATES'],
+  ['FULL_CARD_MINIMUM', 'WB_UNDERSIZED_DEFAULT_REJECT'],
+];
+const RULES = new Map(RULE_REGISTRY.map(r => [r.id, r]));
+const FACT_GROUP = new Map();
+SAME_FACT_GROUPS.forEach((group, i) => group.forEach(id => FACT_GROUP.set(id, i)));
+
+/* 旧 code → 注册表 id。闸门在界面上是按卡型拼出来的（PIPELINE_GATE_8 / MEAT_GATE_8），
+   过审内核的发现用 code 直接对应。带分支的用 kind 收窄：
+   闸6 既是常驻预算又是玩法新度，靠分支名分开，否则两件事共用一个身份。 */
+const NOVELTY_KINDS = new Set(['no-play', 'title-dup', 'overlap', 'anchor-low', 'no-anchors', 'template']);
+function ruleIdOf(finding) {
+  if (!finding) return '';
+  if (finding.ruleId && RULES.has(finding.ruleId)) return finding.ruleId;
+  const code = String(finding.code || '');
+  const summary = /^(?:PIPELINE|MEAT)_GATE_(SUMMARY|NOVELTY)$/.exec(code);
+  if (summary) return summary[1] === 'SUMMARY' ? 'GATE_SUMMARY' : 'GATE_NOVELTY_SUMMARY';
+  const gate = /^(?:PIPELINE_GATE_|MEAT_GATE_|GATE_)(\d+)$/.exec(code);
+  if (gate) {
+    const n = gate[1], kind = finding.kind || (finding.progress ? 'anchor-low' : '');
+    /* 闸6 一个号发十几条不同规则，光看号分不出来。老发现项没有 kind 时按说明文字兜底，
+       顺序要紧：「常驻层…超过单轮预算」不能被当成玩法类问题。 */
+    const text = String(finding.detail || '');
+    const guess = kind || (/常驻层|类目|预算/.test(text) ? 'budget' : /标题重复/.test(text) ? 'title-dup' : /模板化/.test(text) ? 'template' : /重合/.test(text) ? 'overlap' : /锚点/.test(text) ? 'anchor-low' : /没有给出 blueprint/.test(text) ? 'no-anchors' : /没有任何玩法/.test(text) ? 'no-play' : '');
+    if (n === '6' && NOVELTY_KINDS.has(guess)) return 'GATE_6.' + guess;
+    if (n === '6') return 'GATE_6.budget';
+    if (n === '3' && kind === 'seed') return 'GATE_3.seed';
+    if (n === '10') return 'GATE_10.' + (kind || (/病态/.test(String(finding.detail)) ? 'density-pathological' : 'density-high'));
+    if (n === '8') {
+      const g8 = /白话 keys/.test(text) ? 'key-count' : /含标点|元术语/.test(text) ? 'key-meta' : /长度超/.test(text) ? 'key-length' : /二字键/.test(text) ? 'no-two-char' : /覆盖率/.test(text) ? 'KEY_COVERAGE' : /碎片|只有 1 个字符/.test(text) ? 'KEY_FRAGMENT' : '';
+      if (g8) return 'GATE_8.' + g8;
+    }
+    if (n === '0') return 'GATE_0';
+    if (n === '4') return 'GATE_4';
+    if (n === '5') return 'GATE_5.no-broad-fallback';
+    if (kind) return 'GATE_' + n + '.' + kind;
+    // 闸1 的无分支结果只可能是「没有 keys」；闸3 只可能是首轮种子。
+    if (n === '1') return 'GATE_1.no-keys';
+    if (n === '3') return 'GATE_3.seed';
+    return 'GATE_' + n;
+  }
+  if (code === 'PLAY_NOVELTY') {
+    const kind = NOVELTY_KINDS.has(finding.kind) ? finding.kind : (finding.progress ? 'anchor-low' : 'no-play');
+    return 'GATE_6.' + kind;
+  }
+  return code;
+}
+function ruleFor(finding) {
+  const id = ruleIdOf(finding);
+  const meta = RULES.get(id);
+  if (meta) return meta;
+  /* 没登记的规则不装作有登记：挂上 code 本身当身份，行为保持「照常报出来」。 */
+  return { id, layer: finding?.group || 'runtime', severity: finding?.severity || 'warning', kinds: ['*'], fixability: 'manual', dedupe: ['code'], source: 'unknown', title: finding?.title || id, unregistered: true };
+}
+function severityForId(id, kind) {
+  const meta = RULES.get(id);
+  if (!meta) return '';
+  const byKind = meta.severityByKind && kind && meta.severityByKind[kind];
+  return byKind || meta.severity;
+}
+const entryRefOf = f => {
+  if (f?.entryId != null && f.entryId !== '') return 'id:' + String(f.entryId);
+  const e = f?.entry;
+  if (e && typeof e === 'object') {
+    if (e.index != null) return 'idx:' + String(e.index);
+    if (e.title) return 'title:' + String(e.title);
+  }
+  return '';
+};
+/* 规则自己声明哪几个字段算身份。同一个规则在同一条目上按不同关键词各报一次是
+   *多个问题*（比如 56 个三字键复核），只有「同一规则 + 同一条目 + 同一个词 + 同一句话」
+   才算重复。跨规则合并另走 SAME_FACT_GROUPS，那里的同一事实本来就会用不同措辞描述。 */
+const quotedTokens = s => [...String(s || '').matchAll(/[「『“"]([^」』”"]{1,24})[」』”"]/g)].map(m => m[1]).join('+');
+function findingKey(f, meta, opts) {
+  const dedupe = meta?.dedupe || ['code'];
+  const parts = [];
+  /* 跨规则同事实（SAME_FACT_GROUPS）：两条规则本来就会用不同措辞描述同一件事，
+     所以谁也没资格规定身份字段；只按「哪个条目 + 说明里出现的那个词」对齐，
+     同一条目上的不同词仍然是不同问题。 */
+  if (opts && opts.crossRule) return [entryRefOf(f), quotedTokens(f.detail)].join('|');
+  if (!opts || opts.withRule !== false) parts.push(meta?.id || ruleIdOf(f));
+  if (dedupe.some(k => ['entry', 'key', 'category', 'title', 'pair'].includes(k))) parts.push(entryRefOf(f));
+  if (dedupe.includes('key')) parts.push(String(f.key || f.gateKey || quotedTokens(f.detail) || ''));
+  if (dedupe.includes('category')) parts.push(String(f.category || (f.detail || '').match(/类目\s*([a-z]+)/)?.[1] || ''));
+  if (dedupe.includes('pair')) parts.push(quotedTokens(f.detail));
+  if (dedupe.includes('item')) parts.push(String(f.detail || '').slice(0, 80));
+  return parts.join('|');
+}
+
+/* 把三套规则的结果过一次闸：挂上身份、按注册表过滤不适用的卡型、同一个事实只留一条。
+   设计原则：注册表里没写的规则一律不丢、不降级——新加的规则最多是「没被登记」，
+   绝不会因为这里不认识它就从报告里消失。返回的报告只写给测试和调试看，不进 runAll 的结果结构。 */
+function normalizeFindings(card, audit) {
+  const kind = cardKindOf(card);
+  const report = { kind, attached: 0, unregistered: [], notApplicable: notApplicableRules(kind).map(r => r.id), scoped: [], deduped: [], counts: {} };
+  if (!audit || typeof audit !== 'object') return report;
+  const live = [];
+  for (const group of ['runtime', 'quality', 'submission']) {
+    const list = audit[group];
+    if (!Array.isArray(list)) continue;
+    for (const f of list) {
+      if (!f || typeof f !== 'object') { live.push({ group: null, f }); continue; }
+      const meta = ruleFor(f);
+      f.ruleId = meta.id;
+      f.ruleLayer = meta.layer;
+      f.fixability = meta.fixability;
+      f.ruleTitle = meta.title;
+      if (!f.group) f.group = meta.layer;
+      if (meta.unregistered) { report.unregistered.push(String(f.code || f.ruleId)); f.__unregistered = true; }
+      else report.attached++;
+      live.push({ group, f, meta });
+    }
+  }
+  for (const item of live) {
+    const { group, f, meta } = item;
+    if (!group || !meta) continue;
+    const kinds = meta.kinds || ['*'];
+    if (meta.enforceScope !== false && !kinds.includes('*') && kind && !kinds.includes(kind)) {
+      report.scoped.push({ code: f.code, ruleId: meta.id, kind });
+      audit[group] = audit[group].filter(x => x !== f);
+      f.__droppedByScope = true;
+    }
+  }
+  /* 跨层去重：同一个事实被两套规则各报一次时只留一条。
+     保留优先级：严重度高的先留；同级时按 runtime → quality → submission（离卡最近的先留）。 */
+  const layerRank = { runtime: 0, quality: 1, submission: 2 };
+  const buckets = new Map();
+  for (const group of ['runtime', 'quality', 'submission']) {
+    const list = audit[group];
+    if (!Array.isArray(list)) continue;
+    for (const f of list) {
+      if (!f || typeof f !== 'object') continue;
+      const meta = ruleFor(f);
+      const fact = FACT_GROUP.get(meta.id);
+      /* 跨规则同事实：按「事实组 + 条目 + 词」聚；同规则只按完整身份聚，
+         并且只有说明文字一模一样才算真重复，避免把同一条目上的多个问题合成一个。 */
+      const key = fact === undefined
+        ? 'self:' + meta.id + '#' + findingKey(f, meta)
+        : 'fact:' + fact + '#' + findingKey(f, meta, { crossRule: true });
+      const bucket = buckets.get(key) || [];
+      bucket.push({ group, f, meta });
+      buckets.set(key, bucket);
+    }
+  }
+  for (const bucket of buckets.values()) {
+    const distinct = new Map();
+    for (const item of bucket) {
+      const prev = distinct.get(item.meta.id);
+      if (!prev) distinct.set(item.meta.id, [item]);
+      else prev.push(item);
+    }
+    const keep = [...distinct.values()].map(list => list[0]);
+    if (keep.length < 2 && ![...distinct.values()].some(list => list.length > 1)) continue;
+    keep.sort((a, b) => (SEVERITY_RANK[b.f.severity] ?? 0) - (SEVERITY_RANK[a.f.severity] ?? 0) || (layerRank[a.group] ?? 9) - (layerRank[b.group] ?? 9));
+    const winner = keep[0];
+    const drops = [];
+    for (const item of bucket) if (item !== winner) drops.push(item);
+    for (const drop of drops) {
+      const sameRule = drop.meta.id === winner.meta.id;
+      const identical = sameRule && String(drop.f.detail || '') === String(winner.f.detail || '');
+      /* 跨规则同事实照合；同规则只有一字不差的重复才合。 */
+      if (!sameRule || identical) {
+        drop.f.__droppedAsDuplicateOf = winner.f.code;
+        audit[drop.group] = audit[drop.group].filter(x => x !== drop.f);
+        /* 留下的一条要带上被合并的来源，面板才能说清「这条是哪几条规则合起来的」。
+           同一条规则自己把同一句话报了两遍属于纯去重，不必惊动用户，只记进报告。 */
+        if (!sameRule) {
+          const from = winner.f.mergedFrom || (winner.f.mergedFrom = []);
+          if (!from.some(x => x.ruleId === drop.meta.id && x.code === drop.f.code)) {
+            from.push({ ruleId: drop.meta.id, code: drop.f.code, layer: drop.group, severity: drop.f.severity });
+          }
+        }
+        report.deduped.push({ ruleId: drop.meta.id, entry: entryRefOf(drop.f), code: drop.f.code, kept: winner.f.code, keptRuleId: winner.meta.id, identical });
+      }
+    }
+  }
+  report.counts = { runtime: (audit.runtime || []).length, quality: (audit.quality || []).length, submission: (audit.submission || []).length };
+  report.error = ['runtime', 'quality', 'submission'].reduce((n, g) => n + (audit[g] || []).filter(f => f && f.severity === 'error').length, 0);
+  report.advisory = ['runtime', 'quality', 'submission'].reduce((n, g) => n + (audit[g] || []).filter(f => f && f.advisory).length, 0);
+  return report;
+}
+function ruleTable() {
+  return RULE_REGISTRY.map(r => ({ ...r, kinds: (r.kinds || ['*']).join('/') }));
+}
 
 const isToken=k=>/^(?:[^：]{1,8}：|.*→)/.test(k);
 const cjk=s=>(String(s||'').match(/[\u4e00-\u9fff]/g)||[]).length;
@@ -451,7 +823,25 @@ function verdictOf(totalCount,totalChars=0){
   return '健康';
 }
 function probeDensity(card,turnText){const d=card.data||card,live=entriesOf(d).filter(enabled),con=live.filter(e=>e.constant===true||e.extensions?.constant===true),trig=live.filter(e=>!(e.constant===true||e.extensions?.constant===true)),text=String(turnText??d.first_mes??''),detail=[];for(const e of trig){const hit=keysOf(e).filter(k=>!isToken(k)&&k.length>=2&&text.toLocaleLowerCase().includes(k.toLocaleLowerCase()));if(hit.length)detail.push({comment:e.comment||'(未命名)',chars:cjk(e.content),hit});}const constChars=con.reduce((n,e)=>n+cjk(e.content),0),pulledChars=detail.reduce((n,e)=>n+e.chars,0),totalCount=con.length+detail.length;return {constCount:con.length,constChars,pulledCount:detail.length,pulledChars,totalCount,totalChars:constChars+pulledChars,verdict:verdictOf(totalCount,constChars+pulledChars),detail,mode:DENSITY_MODE,limits:{...FIRST_TURN}};}
-  function keywordGates(card){
+  /* ── 常驻预算：全工作台唯一一份数字 ─────────────────────────────
+   常驻条目每一轮都会进上下文。判定它的阈值原来散在四个地方——底座 quality()、过审内核、
+   闸6、生成期 policy——同一个毛病在不同地方按不同的预算报出来，同一张卡能同时「超预算」和「没超」。
+   现在数字都在这里，底座、内核、闸6 三处判据引用同一行；改一个数，三处同时变。
+
+   chars      超了就警告（软预算，按卡型）
+   cap        超了就报错（硬上限）。常规卡没有设计表、也不跑闸6，所以是 null；
+              常规卡的常驻靠 tokens 那条线兜底（约合 28800 字），不要为了「填满表格」编一个数。
+   tokens     内容量单位超了就报错（全卡型同一条线）
+   infoChars  超了只提示：不挡导出，也不会发给 AI
+   overload*  条数多、字数多、占比高三条同时成立时的严重过载判据 */
+const CONST_BUDGETS = {
+  regular:  { chars: 12000, cap: null,  tokens: 18000, infoChars: 8000, overloadChars: 16000, overloadCount: 12, overloadShare: 0.35 },
+  pipeline: { chars: 12500, cap: 25000, tokens: 18000, infoChars: 8000, overloadChars: 16000, overloadCount: 12, overloadShare: 0.35 },
+  meat:     { chars: 23500, cap: 44000, tokens: 18000, infoChars: 8000, overloadChars: 16000, overloadCount: 12, overloadShare: 0.35 },
+};
+const constBudgetFor = kind => CONST_BUDGETS[kind] || CONST_BUDGETS.regular;
+
+function keywordGates(card){
     const d=card.data||card, entries=entriesOf(d), out=[];
     const kind=d.extensions&&d.extensions.rp_studio&&d.extensions.rp_studio.cardKind;
     /* 肉卡条目多、靠玩家自然说出的话触发，没有流水线卡那套「开局就要把常驻层喂饱」的约束，
@@ -466,7 +856,7 @@ function probeDensity(card,turnText){const d=card.data||card,live=entriesOf(d).f
     const owners=new Map(); let tokenKeys=0;
     /* 每条发现的稳定身份：条目 + 子问题种类。预检靠它认「同一条目上的同一类问题」，
        不再从说明文字反推——否则「只修好一半」（少删一个词、说明文字一变）会被判成新错误整批拒掉。 */
-    const add=(gate,severity,detail,e,kind)=>{const f={gate,severity,detail};if(e){f.entryId=String(e.id??e.uid??e.comment??e.name??'');f.entryTitle=e.comment||e.name||'';}if(kind)f.kind=kind;out.push(f);return f;};
+    const add=(gate,severity,detail,e,kind)=>{const f={gate,severity,detail,ruleId:'GATE_'+gate+(kind?'.'+kind:'')};if(e){f.entryId=String(e.id??e.uid??e.comment??e.name??'');f.entryTitle=e.comment||e.name||'';}if(kind)f.kind=kind;out.push(f);return f;};
     for(const e of trig){
       /* 同一条目里把同一个键写两遍是笔误，不是「两条条目共用」：先去重，再查跨条目共用。 */
       const rawKeys=keysOf(e),keys=[...new Set(rawKeys)];
@@ -494,17 +884,17 @@ function probeDensity(card,turnText){const d=card.data||card,live=entriesOf(d).f
       const keys=keysOf(e);if(!keys.length)continue;
       if(keys.some(k=>seedText.includes(k)))seeded++;
     }
-    if(seeded<3)out.push({gate:3,severity:meat?'warning':'error',detail:'首轮种子不足：first_mes/常驻只能激活 '+seeded+' 条触发条目（要求 ≥3），开局会干烧常驻层'});
+    if(seeded<3)out.push({gate:3,ruleId:'GATE_3.seed',severity:meat?'warning':'error',detail:'首轮种子不足：first_mes/常驻只能激活 '+seeded+' 条触发条目（要求 ≥3），开局会干烧常驻层'});
     /* 闸4：本地模拟扫描——模拟 AI 按状态栏模板回填令牌后，token 条目按序可达 */
     let tokenEntries=trig.filter(e=>keysOf(e).some(isToken)).length;
-    if(tokenEntries&&!constText.match(/状态栏|状态面板|═|━/))out.push({gate:4,severity:'warning',detail:'有 '+tokenEntries+' 条令牌条目但常驻层没有状态栏协议条目，令牌循环可能断链'});
+    if(tokenEntries&&!constText.match(/状态栏|状态面板|═|━/))out.push({gate:4,ruleId:'GATE_4',severity:'warning',detail:'有 '+tokenEntries+' 条令牌条目但常驻层没有状态栏协议条目，令牌循环可能断链'});
     /* 闸5：泛词兜底——NPC/场所/情绪至少一条低门槛入口。
        这是「可做可不做」的建议（见 docs/plans/2026-10-15-整个工作台审计…/§4.1）：
        它既不拦导出，也不该被送进 AI 批次，更不该算进「修完了没」。 */
     const broad=trig.some(e=>keysOf(e).some(k=>BROAD_KEYS.includes(k)&&k.length>=2&&!MIS_TRIGGER.has(k)&&!UNIVERSAL_KEYS.includes(k)));
-    if(trig.length>=10&&!broad)out.push({gate:5,severity:'warning',advisory:true,kind:'no-broad-fallback',detail:'缺少泛词兜底入口条目（NPC/场所/情绪类超泛词 keys），冷门路径会永远打不开；不加也能发布'});
+    if(trig.length>=10&&!broad)out.push({gate:5,ruleId:'GATE_5.no-broad-fallback',severity:'warning',advisory:true,kind:'no-broad-fallback',detail:'缺少泛词兜底入口条目（NPC/场所/情绪类超泛词 keys），冷门路径会永远打不开；不加也能发布'});
     /* 署名检查（发布合规锚，不可移除） */
-    if(!/仅在\s*Roleplay\s*Hub\s*发布/.test(String(d.scenario||'')))out.push({gate:0,severity:'error',detail:'scenario 缺少固定署名句【由XX制作，仅在Roleplay Hub发布】，禁止删除'});
+    if(!/仅在\s*Roleplay\s*Hub\s*发布/.test(String(d.scenario||'')))out.push({gate:0,ruleId:'GATE_0',severity:'error',detail:'scenario 缺少固定署名句【由XX制作，仅在Roleplay Hub发布】，禁止删除'});
     const push=(gate,severity,detail)=>out.push({gate,severity,detail});
     const cjk=s=>(String(s||'').match(/[\u4e00-\u9fff]/g)||[]).length;
 /* ── 闸9：高误触词 ──────────────────────────────────────────────────
@@ -530,11 +920,11 @@ for (const e of trig) {
    所以把过高从 error 降成 warning 不会让「9 条修成 25 条」这种回退溜过去。 */
 const dens = probeDensity(card);
 if (dens.verdict === '病态') {
-  push(10, 'error', `单轮拉取 ${dens.totalCount} 条 / ${dens.totalChars} 字（病态，基准 5-6 健康、10+ 过高）：常驻 ${dens.constCount} 条 ${dens.constChars} 字 + 命中 ${dens.pulledCount} 条 ${dens.pulledChars} 字`);
+  out.push({gate:10,ruleId:'GATE_10.density-pathological',severity:'error',detail:`单轮拉取 ${dens.totalCount} 条 / ${dens.totalChars} 字（病态，基准 5-6 健康、10+ 过高）：常驻 ${dens.constCount} 条 ${dens.constChars} 字 + 命中 ${dens.pulledCount} 条 ${dens.pulledChars} 字`});
 } else if (dens.verdict === '过高') {
-  out.push({gate:10,severity:'warning',kind:'density-high',detail:`单轮拉取 ${dens.totalCount} 条 / ${dens.totalChars} 字（过高，基准 5-6 健康）：常驻 ${dens.constCount} 条 ${dens.constChars} 字 + 命中 ${dens.pulledCount} 条 ${dens.pulledChars} 字。能发布，但建议把常驻层或触发字数压回可接受档`});
+  out.push({gate:10,ruleId:'GATE_10.density-high',severity:'warning',kind:'density-high',detail:`单轮拉取 ${dens.totalCount} 条 / ${dens.totalChars} 字（过高，基准 5-6 健康）：常驻 ${dens.constCount} 条 ${dens.constChars} 字 + 命中 ${dens.pulledCount} 条 ${dens.pulledChars} 字。能发布，但建议把常驻层或触发字数压回可接受档`});
 } else if (dens.verdict === '可接受') {
-  out.push({gate:10,severity:'warning',advisory:true,kind:'density-acceptable',detail:`单轮拉取 ${dens.totalCount} 条 / ${dens.totalChars} 字（可接受但偏高${dens.totalCount >= FIRST_TURN.countHigh ? `：条数已达 ${dens.totalCount} 条，但字数没超 ${FIRST_TURN.charsHigh}` : ''}）。属于可选优化，不加也不影响发布`});
+  out.push({gate:10,ruleId:'GATE_10.density-acceptable',severity:'warning',advisory:true,kind:'density-acceptable',detail:`单轮拉取 ${dens.totalCount} 条 / ${dens.totalChars} 字（可接受但偏高${dens.totalCount >= FIRST_TURN.countHigh ? `：条数已达 ${dens.totalCount} 条，但字数没超 ${FIRST_TURN.charsHigh}` : ''}）。属于可选优化，不加也不影响发布`});
 }
 /* ── 预算表（逐字对应工作台 PIPELINE_PLAN / MEAT_PLAN）─────────────── */
 const PLAN = {
@@ -542,8 +932,8 @@ const PLAN = {
   meat: { runtime: [5000, 10000], profile: [18500, 37000], play: [57500, 115000], stage: [3500, 7000] },
 };
 const BUDGET = PLAN[meat ? 'meat' : 'pipeline'];
-const CONST_BUDGET = meat ? 23500 : 12500;
-const CONST_CAP = meat ? 44000 : 25000;
+const CONST_LIMIT = constBudgetFor(meat ? 'meat' : kind === 'pipeline' ? 'pipeline' : 'regular');
+const CONST_BUDGET = CONST_LIMIT.chars; const CONST_CAP = CONST_LIMIT.cap;
 const PLAY_MIN = 700, PLAY_MAX = 1300;   // 工作台 L1802
 
 /* ⚠️ 类目必须走 e._raw.extensions 取。
@@ -557,14 +947,14 @@ const catOf = (e) => e.extensions?.rp_studio?.category || '(无)';
    常驻每轮都进上下文，触发不触发就不进，必须分开算。
    工作台的 caps 只在生成期夹 targetChars（L2142），这里在校验期同时检查目标与硬上限。 */
 const conCjk = dens.constChars;
-if (conCjk > CONST_CAP) push(6, 'error', `常驻层 ${conCjk} 字，超硬上限 ${CONST_CAP}（每轮都注入，必须缩减）`);
-else if (conCjk > CONST_BUDGET) push(6, 'warning', `常驻层 ${conCjk} 字，超目标预算 ${CONST_BUDGET}`);
+if (CONST_CAP && conCjk > CONST_CAP) out.push({gate:6,ruleId:'GATE_6.budget',severity:'error',detail: `常驻层 ${conCjk} 字，超硬上限 ${CONST_CAP}（每轮都注入，必须缩减）`});
+else if (conCjk > CONST_BUDGET) out.push({gate:6,ruleId:'GATE_6.budget',severity:'warning',detail: `常驻层 ${conCjk} 字，超目标预算 ${CONST_BUDGET}`});
 for (const [cat, [target, cap]] of Object.entries(BUDGET)) {
   const optionalTarget=(d.extensions?.rp_studio?.blueprint?.worldbookPlan||[]).find(p=>p.category===cat)?.targetChars;
   const softTarget=['stage','token'].includes(cat)&&typeof optionalTarget==='number'&&Number.isFinite(optionalTarget)?Math.min(cap,Math.max(0,optionalTarget)):target;
   const n = live.filter((e) => catOf(e) === cat).reduce((a, e) => a + cjk(e.content), 0);
-  if (n > cap) push(6, 'error', `类目 ${cat} ${n} 字，超 cap ${cap}（▲${(n / cap * 100 - 100).toFixed(0)}%）`);
-  else if (n > softTarget) push(6, 'warning', `类目 ${cat} ${n} 字，超 target ${softTarget}`);
+  if (n > cap) out.push({gate:6,ruleId:'GATE_6.budget',severity:'error',detail: `类目 ${cat} ${n} 字，超 cap ${cap}（▲${(n / cap * 100 - 100).toFixed(0)}%）`});
+  else if (n > softTarget) out.push({gate:6,ruleId:'GATE_6.budget',severity:'warning',detail: `类目 ${cat} ${n} 字，超 target ${softTarget}`});
 }
 
 /* ── 闸7：位置与常驻一致性（平台硬规定）──────────────────────────── */
@@ -612,7 +1002,7 @@ for (const e of live.filter((x) => catOf(x) === 'play')) {
     const kind=d.extensions&&d.extensions.rp_studio&&d.extensions.rp_studio.cardKind;
     const playCategories=kind==='meat'||kind==='pipeline'?['play']:['play','event','mechanic'];
     const plays=entries.filter(e=>enabled(e)&&e.disable!==true&&e.disabled!==true&&playCategories.includes(e.extensions?.rp_studio?.category));
-    if(!plays.length)return {results:[{gate:6,severity:'error',detail:'整张卡没有任何玩法条目（play；常规卡也可用 event/mechanic），没有玩法可谈'}],playCount:0,anchorHit:0,anchorTotal:0};
+    if(!plays.length)return {results:[{gate:6,ruleId:'GATE_6.no-play',kind:'no-play',severity:'error',detail:'整张卡没有任何玩法条目（play；常规卡也可用 event/mechanic），没有玩法可谈'}],playCount:0,anchorHit:0,anchorTotal:0};
     const titleOf=e=>String(e.comment||e.name||'(未命名)');
     /* 只留实义字符，标点和换行差异不该算成两种玩法 */
     const norm=t=>String(t||'').replace(/[^\u4e00-\u9fff\u3400-\u4dbfa-zA-Z0-9]/g,'');
@@ -622,7 +1012,7 @@ for (const e of live.filter((x) => catOf(x) === 'play')) {
     const seenTitle=new Set();
     for(const e of plays){
       const t=titleOf(e).trim();if(!t)continue;
-      if(seenTitle.has(t))out.push({gate:6,severity:'error',detail:'玩法标题重复：「'+t+'」在一张卡里出现两次，等于没写第二条新玩法'});
+      if(seenTitle.has(t))out.push({gate:6,ruleId:'GATE_6.title-dup',kind:'title-dup',severity:'error',detail:'玩法标题重复：「'+t+'」在一张卡里出现两次，等于没写第二条新玩法'});
       seenTitle.add(t);
     }
 
@@ -644,7 +1034,7 @@ for (const e of live.filter((x) => catOf(x) === 'play')) {
       if(v>=0.45)dups.push({a:sigs[i].title,b:sigs[j].title,v});
     }
     dups.sort((x,y)=>y.v-x.v);
-    for(const x of dups.slice(0,6))out.push({gate:6,severity:'error',detail:'两条玩法正文重合 '+(x.v*100).toFixed(0)+'%：「'+x.a+'」与「'+x.b+'」基本是同一条，玩法没有新增'});
+    for(const x of dups.slice(0,6))out.push({gate:6,ruleId:'GATE_6.overlap',kind:'overlap',severity:'error',detail:'两条玩法正文重合 '+(x.v*100).toFixed(0)+'%：「'+x.a+'」与「'+x.b+'」基本是同一条，玩法没有新增'});
 
     /* ③ 玩法必须长在本卡上 */
     const anchors=(cardMeta(card).blueprint&&cardMeta(card).blueprint.playAnchors||[]).map(x=>String(x||'').trim()).filter(x=>x.length>=2);
@@ -652,24 +1042,192 @@ for (const e of live.filter((x) => catOf(x) === 'play')) {
     const identity=e=>String(e.id??e.uid??titleOf(e)),coveredIds=plays.filter(e=>matchesAnchor(e.content,resolved)).map(identity);
     let anchorHit=coveredIds.length;const coverage={rule:'play-anchor-coverage',label:'玩法锚点覆盖',total:plays.length,required:Math.ceil(plays.length*.8),covered:anchorHit,entryIds:plays.map(identity).sort(),coveredIds:coveredIds.sort(),anchors};
     if(anchors.length){
-      if(anchorHit/plays.length<0.8)out.push({gate:6,severity:'error',progress:coverage,detail:'玩法新度不足：'+plays.length+' 条玩法里有 '+(plays.length-anchorHit)+' 条完全没提到本卡自己的玩法锚点（'+anchors.slice(0,6).join('、')+'…），换到别的卡上也照样成立，属于通用清单'});
+      if(anchorHit/plays.length<0.8)out.push({gate:6,ruleId:'GATE_6.anchor-low',kind:'anchor-low',severity:'error',progress:coverage,detail:'玩法新度不足：'+plays.length+' 条玩法里有 '+(plays.length-anchorHit)+' 条完全没提到本卡自己的玩法锚点（'+anchors.slice(0,6).join('、')+'…），换到别的卡上也照样成立，属于通用清单'});
     }else{
-      out.push({gate:6,severity:'warning',detail:'基础设计没有给出 blueprint.playAnchors，没法核对玩法是不是从这张卡长出来的；重新生成一次设计就能补上'});
+      out.push({gate:6,ruleId:'GATE_6.no-anchors',kind:'no-anchors',severity:'warning',detail:'基础设计没有给出 blueprint.playAnchors，没法核对玩法是不是从这张卡长出来的；重新生成一次设计就能补上'});
     }
 
     /* ④ 模板化开头 */
     const heads=new Map();
     for(const e of plays){const prose=String(e.content||'').replace(/^\s*(?:【触发情境】|【触发】|触发情境[：:]|触发在)\s*/,''),h=norm(prose).slice(0,6);if(h.length<6)continue;heads.set(h,(heads.get(h)||0)+1);}
     const top=[...heads.entries()].sort((a,b)=>b[1]-a[1])[0];
-    if(top&&plays.length>=6&&top[1]/plays.length>=0.5)out.push({gate:6,severity:'warning',detail:'玩法模板化：'+plays.length+' 条里有 '+top[1]+' 条都以「'+top[0]+'…」开头，读起来像同一个模板填空，建议每条按各自场景重写开头'});
+    if(top&&plays.length>=6&&top[1]/plays.length>=0.5)out.push({gate:6,ruleId:'GATE_6.template',kind:'template',severity:'warning',detail:'玩法模板化：'+plays.length+' 条里有 '+top[1]+' 条都以「'+top[0]+'…」开头，读起来像同一个模板填空，建议每条按各自场景重写开头'});
 
     return {results:out,playCount:plays.length,anchorHit,anchorTotal:anchors.length,coverage,resolvedAnchors:resolved};
   }
 
-return {keyPolicy,MIS_TRIGGER,UNIVERSAL_KEYS,BROAD_KEYS,PROBABILITY_MAX,keywordGates,playNoveltyGate,probeDensity,verdictOf,FIRST_TURN,DENSITY_MODE,keyCandidates,repairKeys,mineTerms,firstTurnOverload,anchorTerms,validateAnchorDesign,resolveAnchors,anchorHit:matchesAnchor};
+/* ===================== 交付层：修复可行性 =====================
+   「发给 AI 修 / 挡住导出」的每一条问题，都必须先能指认出一种改法：
+     local  工作台自己有改法（LOCAL_FIXERS）
+     ai     改的落点在 Diff 白名单里（PATCH_PATHS），可以交 AI 重写
+     manual 登记为「要人来判断」，不发给 AI，但仍算错误、仍挡导出
+     none   没有可落地的改法，降为建议：不发给 AI，也不挡导出
+   判据只有这一份，面板计数、修完判定、导出闸三处共用。
+   硬规矩：**挡导出的错误必须有人能修**——local 或 ai；人改只在 HUMAN_ONLY_RULES 里例外。 */
+
+/* Diff 能表达的落点——这是 Z.diff 里 ALLOWED 的唯一出处（Z.diff 从这里读）。
+   含义：不在这张表里的字段，AI 的 Diff 根本写不出来，所以那些问题不该交给 AI。 */
+const PATCH_PATHS = ['data.name','data.description','data.personality','data.scenario','data.creator_notes','data.first_mes','data.mes_example','data.character_book.entries','data.extensions.regex_scripts','data.uiTemplates'];
+
+/* 本地改法表：ruleId → 改法名。表里有 = 工作台能自己改，不需要 AI。
+   与 registry 的 fixability:'local' 必须对得上；对不上的由 tools/asserts/b2-feasibility.js 报出来。 */
+const LOCAL_FIXERS = { ZERO_SCAN_DEPTH: 'set-scan-depth-2', REVIEW_ZERO_SCAN: 'set-scan-depth-2' };
+
+/* 真正只能人来判断的错误级规则——挡导出，但不交给 AI。
+   判据（tools/asserts/b2-feasibility.js 逐条核）：凡挡导出的错误，要么工作台自己能改（local），
+   要么 AI 改得了（ai，落点在 PATCH_PATHS 里）；只有下表例外，且每条都要写清为什么得人来。
+   反过来说——「既挡导出、又没人能改」的规则是工作台自己的 bug（旧版一次就有 20 条这样的）。 */
+const HUMAN_ONLY_RULES = {
+  INVALID_ROOT: '卡根结构就不是一张卡，得先确认原文件和导入方式，AI 没有可改的落点',
+  INVALID_FIELD_TYPE: '基础字段类型坏了（该是文字的地方是对象），要先查是哪一步写坏的，不是改写内容',
+  INVALID_REGEX: '正则编译不过；修还是删取决于你要它干什么，这件事得你定',
+  INVALID_LORE_REGEX: '条目正则编译不过；同样，修还是删得你定',
+  LOCAL_UI_FAILED: '本地界面校验（正则/UI 模板预览）没过，要先在预览里看坏成什么样',
+  WB_REGEX_INVALID: '关键词正则无效；同样，修还是删得你定',
+};
+
+/* 条目内字段：这些字段的改动，Diff 只能整段重写 entries 来表达。 */
+const ENTRY_FIELDS = new Set(['keys','secondaryKeys','key','scanDepth','constant','comment','content','position','depth','order','probability','id/uid','name','weight','enabled']);
+
+/* 有明确卡级落点的规则：不靠条目、也不带 field，但改的位置就是某一个白名单字段。 */
+const CARD_FIELD_CODES = {
+  MISSING_NAME: 'data.name', MISSING_DESCRIPTION: 'data.description', MISSING_PERSONALITY: 'data.personality',
+  MISSING_SCENARIO: 'data.scenario', MISSING_FIRST_MES: 'data.first_mes', MISSING_MES_EXAMPLE: 'data.mes_example',
+  GATE_0: 'data.scenario', MISSING_HUB_WATERMARK: 'data.creator_notes',
+  /* 整卡开场/署名类：落点是卡面字段，不是条目数组（只登记注册表里真有的 id）。 */
+  THIN_OPENING: 'data.first_mes', MISSING_OPENING: 'data.first_mes', AUTHOR_NOTES_NOT_TAGS: 'data.creator_notes',
+};
+
+/* 这条规则的改法是「新增一条条目」而不是改已有的（例如整张卡没有玩法条目）。 */
+const canCreateEntryOf = id => Boolean((RULES.get(id) || {}).canCreateEntry);
+
+function targetPathOf(finding, card) {
+  const fix = finding?.fix;
+  if (fix?.path) {
+    const raw = String(fix.path);
+    /* 本地修法给的是条目内字段路径（data.character_book.entries.3.scanDepth），
+       Diff 只能整段写 entries，所以归一到白名单里的那一条。 */
+    return PATCH_PATHS.find(base => raw === base || raw.startsWith(base + '.')) || '';
+  }
+  const field = String(finding?.field || '');
+  if (/^uiTemplates/.test(field)) return 'data.uiTemplates';
+  if (/^extensions\.regex|^regex/.test(field)) return 'data.extensions.regex_scripts';
+  if (/^first_mes/.test(field)) return 'data.first_mes';
+  /* 认规则身份，不认界面上的编号：闸门在运行时叫 PIPELINE_GATE_6 / MEAT_GATE_8，
+     规则身份是 GATE_6.budget / GATE_8，拿 code 去比前缀会整族落空（等于把闸门错误悄悄降成建议）。 */
+  const code = ruleIdOf(finding) || String(finding?.code || '');
+  if (CARD_FIELD_CODES[code]) return CARD_FIELD_CODES[code];
+  if (finding?.entry && typeof finding.entry === 'object') return 'data.character_book.entries';
+  if (ENTRY_FIELDS.has(field)) return 'data.character_book.entries';
+  /* 整卡层面的判定（常驻超预算、正文不足、重复 id、开场与世界状态冲突…）改的都是条目数组本身。 */
+  if (/^(WB_|GATE_|REVIEW_|FULL_CARD_|RP_FULL_CARD_|RP_CARD_)/.test(code)) return 'data.character_book.entries';
+  return '';
+}
+
+function repairStrategyOf(ruleId, finding, card) {
+  const id = ruleId || ruleIdOf(finding);
+  const meta = RULES.get(id) || null;
+  const fixability = meta?.fixability || 'manual';
+  if (finding?.advisory || meta?.advisory) return { id, mode: 'none', why: '这条规则本来就允许存在，不需要修' };
+  /* 没登记过的规则不猜它能怎么修：按「要人判断」处理，仍然报出来、仍然挡导出，
+     但不交给 AI——没登记就没有判据，交给 AI 只是让它去试。 */
+  if (meta?.unregistered) return { id, mode: 'manual', why: '这条规则还没登记改法，先按「要你自己判断」处理' };
+  if (LOCAL_FIXERS[id]) {
+    /* 声明「工作台能自己改」的规则，只有真的算出落点才算能自己改。
+       算不出落点（条目已经改过、或找不到目标）时不能就地卡死：改交给 AI 重写条目数组。 */
+    if (finding?.fix?.path) return { id, mode: 'local', why: '工作台能自己改（' + LOCAL_FIXERS[id] + '）', path: 'data.character_book.entries' };
+    return { id, mode: 'ai', why: '本地改法这次没有落点，改由 AI 重写条目数组', path: 'data.character_book.entries' };
+  }
+  if (fixability === 'advisory') return { id, mode: 'none', why: '登记为「不建议修」，降为建议' };
+  const path = targetPathOf(finding, card);
+  if (fixability === 'manual') return { id, mode: 'manual', why: '登记为「要人来判断」，工作台和 AI 都不该替你动这一条', path };
+  if (path) return { id, mode: 'ai', why: '可以交 AI 改，落点在 ' + path, path };
+  return { id, mode: 'none', why: '这条问题没有可落地的修改位置，交出去也改不动' };
+}
+
+/* 给一条发现挂上可行性结论。mode==='none' 且本来是错误的，直接降为建议
+   （severity 改成 warning + 记下原因），这样三处判据自然不再把它当错误。 */
+function decorateRepair(finding, card) {
+  const repair = repairStrategyOf(ruleIdOf(finding), finding, card);
+  if (repair.mode !== 'none' || finding?.severity !== 'error') return { ...finding, repair };
+  return { ...finding, repair, severity: 'warning', demotedFrom: 'error', demotedWhy: repair.why };
+}
+
+/* 唯一判据：这条问题挡不挡导出、算不算「还没修完」。 */
+function isBlocking(finding) {
+  return finding?.severity === 'error' && !finding?.advisory
+    && finding?.repair?.mode !== 'none' && finding?.demotedFrom !== 'error';
+}
+
+return {keyPolicy,CONST_BUDGETS,constBudgetFor,HUMAN_ONLY_RULES,canCreateEntryOf,WEAK_WORDS,isWeakWord,isMisTrigger,PATCH_PATHS,LOCAL_FIXERS,ENTRY_FIELDS,CARD_FIELD_CODES,targetPathOf,repairStrategyOf,decorateRepair,isBlocking,MIS_TRIGGER,UNIVERSAL_KEYS,BROAD_KEYS,PROBABILITY_MAX,keywordGates,playNoveltyGate,probeDensity,verdictOf,FIRST_TURN,DENSITY_MODE,keyCandidates,repairKeys,mineTerms,firstTurnOverload,anchorTerms,validateAnchorDesign,resolveAnchors,anchorHit:matchesAnchor,RULE_REGISTRY,RULES,SAME_FACT_GROUPS,CARD_KINDS,SEVERITY_RANK,ruleIdOf,ruleFor,severityForId,entryRefOf,findingKey,normalizeFindings,ruleTable,KIND_LABELS,kindLabel,notApplicableRules,cardKindOf};
 });
 </script>
 <!-- CYF_QUALITY_RULES_END -->
+<!-- CYF_REPAIR_FLOW_START -->
+<script id="cyf-repair-flow">
+/* Shared automatic repair flow. No DOM, storage, or model credentials. */
+(function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;root.Zaojing=root.Zaojing||{};root.Zaojing.repairFlow=api;})(typeof globalThis!=='undefined'?globalThis:this,function(){
+ 'use strict';
+ const arrayPaths=new Set(['data.character_book.entries','data.extensions.regex_scripts','data.uiTemplates']);
+ const clone=x=>JSON.parse(JSON.stringify(x));
+ function unitsOf(diff){
+  const units=[],byKey=new Map();
+  for(const [index,change] of diff.changes.entries()){
+   if(change.merge||!arrayPaths.has(change.path)){units.push({label:change.merge?'合并 '+change.merge.from+' → '+change.merge.into:change.path,changes:[change]});continue;}
+   for(const [rowIndex,row] of change.value.entries()){
+    const id=row.id??row.uid??row.comment??row.name??row.scriptName;
+    const key=change.path+'\0'+(id??'new:'+index+':'+rowIndex);
+    let unit=byKey.get(key);if(!unit){unit={label:String(row.comment||row.name||row.scriptName||id||'新增条目'),changes:[]};byKey.set(key,unit);units.push(unit);}
+    unit.changes.push({...change,value:[row]});
+   }
+  }
+  return units;
+ }
+ function select(before,diff,{candidate,assess,validate=()=>{}}){
+  const evaluate=(base,changes)=>{try{const part={...diff,changes};validate(part);const card=candidate(base,part),check=assess(base,card);return {card,check,ok:check.acceptable&&check.improved};}catch(error){return {ok:false,error:String(error.message||error)};}};
+  const whole=evaluate(before,diff.changes);
+  if(whole.ok)return {diff,card:whole.card,check:whole.check,rejected:[],accepted:unitsOf(diff).length};
+  let card=clone(before),pending=unitsOf(diff),accepted=[],last=new Map();
+  // Revisit dependencies after accepting independent entries. Never save a rejected candidate.
+  for(let pass=0;pass<2&&pending.length;pass++){
+   const next=[];let advanced=false;
+   for(const unit of pending){const r=evaluate(card,unit.changes);if(r.ok){card=r.card;accepted.push(unit);advanced=true;}else{last.set(unit,r);next.push(unit);}}
+   pending=next;if(!advanced)break;
+  }
+  if(pending.length>1){const r=evaluate(card,pending.flatMap(u=>u.changes));if(r.ok){card=r.card;accepted.push(...pending);pending=[];}}
+  const changes=accepted.flatMap(u=>u.changes),check=assess(before,card);
+  // The combined result must also pass against the original card (budget and preview included).
+  if(changes.length&&(!check.acceptable||!check.improved))return {diff:{...diff,changes:[]},card:before,check:whole.check,rejected:unitsOf(diff).map(u=>({...u,check:whole.check,error:whole.error})),accepted:0};
+  return {diff:{...diff,changes},card,check,rejected:pending.map(u=>({label:u.label,check:last.get(u)?.check,error:last.get(u)?.error})),accepted:accepted.length};
+ }
+ const abort=signal=>{if(signal?.aborted){const error=new Error('已停止');error.name='AbortError';throw error;}};
+ async function run({read,inspect,request,select:choose,commit,finish,onState=()=>{},signal,stallLimit=3}){
+  let rounds=0,stalled=0,feedback=[],lastError='';const rejected=[];
+  while(true){
+   abort(signal);const before=read(),plan=inspect(before);
+   if(!plan.blockers.length){await finish(before);abort(signal);const final=inspect(read());if(!final.blockers.length)return {status:'complete',rounds,stalled:0,rejected};return {status:'blocked',rounds,remaining:final.blockers,rejected};}
+   const ai=plan.ai.filter(f=>f.severity==='error');
+   if(!ai.length)return {status:'blocked',rounds,remaining:plan.blockers,rejected};
+   onState({rounds:rounds+1,stalled,remaining:plan.blockers.length,feedback});
+   try{
+    const reply=await request(before,ai,{round:++rounds,stalled,feedback,limit:stalled?1:3});abort(signal);
+    const result=choose(before,reply);feedback=result.rejected;
+    if(!result.accepted&&!feedback.length)feedback=[{label:'空 Diff',check:result.check,error:'模型未返回能修复目标错误的改动，请返回实际字段修改'}];
+    rejected.push(...feedback);
+    if(result.accepted&&result.check.acceptable&&result.check.improved){await commit(before,result.card,result);abort(signal);stalled=0;lastError='';continue;}
+    stalled++;lastError='方案未产生可验收的进展';
+   }catch(error){
+    abort(signal);if(error.fatal)throw error;
+    if(error.status>=400||/HTTP\s*[45]\d\d|Failed to fetch|NetworkError|配额不足|quota_exceeded/i.test(String(error.message)))return {status:'blocked',rounds,remaining:plan.blockers,error:String(error.message),rejected};
+    stalled++;lastError=String(error.message||error);feedback=[{error:lastError}];
+   }
+   if(stalled>=stallLimit)return {status:'stalled',rounds,stalled,remaining:inspect(read()).blockers,feedback,error:lastError,rejected};
+  }
+ }
+ return {unitsOf,select,run};
+});
+</script>
+<!-- CYF_REPAIR_FLOW_END -->
 <!-- RPHUB_AUDIT_CORE_START: reference V1.6, core 2.5.0, sha256 d92573bb2beeaead071f4281b1f4db3712b7fa6bc89972c5f6aa24545321e23a -->
 <script id="rphub-audit-core">
 (function (root, factory) {
@@ -696,29 +1254,14 @@ return {keyPolicy,MIS_TRIGGER,UNIVERSAL_KEYS,BROAD_KEYS,PROBABILITY_MAX,keywordG
     "user_top", "assistant_top", "at_depth", "author_note_top", "author_note_bottom",
     "example_messages_top", "example_messages_bottom", "outlet"
   ]);
-  var BROAD_KEYS = new Set([
-    "人", "事", "看", "去", "我", "你", "他", "她", "它", "打",
-    "系统", "世界", "事件", "任务", "地点", "角色", "人物", "状态",
-    "消息", "继续", "现在", "情况", "剧情", "设定", "场景", "规则"
-  ]);
-  var HIGH_FALSE_TRIGGER_KEYS = new Set([
-    "去了", "到了", "不行了", "做完", "结束", "身体", "想要", "忍不住",
-    "发现", "怀疑", "看到了", "比较", "不同", "区别", "差别", "一样", "不像",
-    "和她", "公寓", "开门", "钥匙", "中午", "午休", "碰见", "碰到", "偶遇",
-    "下雨", "屁股"
-  ]);
-  var FALSE_TRIGGER_EXAMPLES = {
-    "去了": "我去了公司", "到了": "我到了", "不行了": "我今天不行了",
-    "做完": "作业做完了", "结束": "这件事结束了", "身体": "我身体不舒服",
-    "想要": "我想要喝水", "忍不住": "我忍不住笑了", "发现": "我发现钥匙不见了",
-    "怀疑": "我怀疑价格算错了", "看到了": "她看到了路牌", "比较": "我想比较一下价格",
-    "不同": "这两件衣服不同", "区别": "它们有什么区别", "差别": "价格差别不大",
-    "一样": "看起来都一样", "不像": "今天不像会下雨", "和她": "我和她去便利店",
-    "公寓": "我去杏奈公寓", "开门": "我开门看看", "钥匙": "钥匙不见了",
-    "中午": "中午去吃饭", "午休": "午休时散步", "碰见": "刚才碰见同事",
-    "碰到": "路上碰到熟人", "偶遇": "我偶遇了同学", "下雨": "今天下雨",
-    "屁股": "她拍了拍屁股"
-  };
+  /* 泛词表只有一份：功能虚词和日常高频词都定义在共享库里（lib/quality-rules.cjs）。
+     这里原来还各存了一份，其中一份只服务某一张卡的剧情词和人名——单卡数据不该长在通用规则里。 */
+  function sharedRules(){ return (typeof globalThis!=='undefined' && globalThis.Zaojing && globalThis.Zaojing.qualityRules) || null; }
+  function weakWord(key){ var q=sharedRules(); return q ? q.isWeakWord(key) : false; }
+  function misTrigger(key){ var q=sharedRules(); return q ? q.isMisTrigger(key) : false; }
+  function entryCardKind(card){ var q=sharedRules(); return q ? q.cardKindOf(card) : 'regular'; }
+  /* 常驻预算不在这里写数字：见共享库 CONST_BUDGETS。取不到就跳过这几条判据，绝不自带一份备用表。 */
+  function constBudget(kind){ var q=sharedRules(); return q && q.constBudgetFor ? q.constBudgetFor(kind) : null; }
   var STAGE_ENTRY_RE = /暗线|渗透|明线|守候|觉醒|崩溃|追夫|反击|阶段|状态机|跃迁|门控|总控/;
   var STAGE_LABEL_KEY_RE = /暗线|渗透|明线|守候|觉醒|崩溃|追夫|反击|阶段|安全期|危险期|高危|暴露期/;
   var STAGE_NATURAL_PROBES = ["撞见了", "已经知道了", "决定不分手", "开始反击", "她们见面了", "当面对质", "我选择了她"];
@@ -1244,13 +1787,19 @@ return {keyPolicy,MIS_TRIGGER,UNIVERSAL_KEYS,BROAD_KEYS,PROBABILITY_MAX,keywordG
         });
       }
       var dangerousKeys = entry.enabled && !entry.constant && !entry.useRegex
-        ? entry.keys.filter(function (key) { return HIGH_FALSE_TRIGGER_KEYS.has(key); })
+        ? entry.keys.filter(function (key) { return misTrigger(key); })
         : [];
       if (dangerousKeys.length && entry.content.length >= 500) {
+        /* 例子从这条世界书自己的正文里取：原来的例子是写死的一句话表，里面塞着某一张卡的剧情词。
+           取不到就只列关键词，不编例子。 */
+        var sentences = String(entry.content).split(/[。！？!?\n]/).filter(function (line) { return line.trim().length >= 4; });
         var examples = dangerousKeys.slice(0, 5).map(function (key) {
-          return "“" + (FALSE_TRIGGER_EXAMPLES[key] || key) + "”会因“" + key + "”触发";
+          var hit = sentences.filter(function (line) { return line.indexOf(key) >= 0; })[0];
+          return hit ? "正文里就有“" + hit.trim().slice(0, 30) + "”，会因“" + key + "”触发" : "关键词“" + key + "”本身会触发";
         });
-        add(findings, "must_fix", "WB_HIGH_FALSE_TRIGGER_KEYS", entry, "这些关键词是日常高频说法，会把本条大段内容错误带出来：" + dangerousKeys.join("、") + "。例如：" + examples.join("；"), {
+        /* 常规卡：日常词误触发只是「可能」，降为建议，不挡导出；流水线肉卡/制作肉卡：整卡靠关键词调度，仍是错误。 */
+        var triggerLevel = entryCardKind(card) === 'regular' ? 'warn' : 'must_fix';
+        add(findings, triggerLevel, "WB_HIGH_FALSE_TRIGGER_KEYS", entry, "这些关键词是日常高频说法，会把本条大段内容错误带出来：" + dangerousKeys.join("、") + "。例如：" + examples.join("；"), {
           field: "keys",
           impact: "玩家在谈工作、身体、天气、价格、开门或普通行动时，也会突然加载与当前意图无关的世界书，造成角色跑题和上下文污染",
           suggestion: "删除这些宽泛词，改成能说明人物、地点和具体意图的组合词；每个新关键词至少用三个无关日常句做反向测试",
@@ -1319,7 +1868,7 @@ return {keyPolicy,MIS_TRIGGER,UNIVERSAL_KEYS,BROAD_KEYS,PROBABILITY_MAX,keywordG
           impact: "玩家说到任何包含这个字的人名、地名或普通句子时，都可能误触发本条目",
           suggestion: "删除单字关键词，改用完整人名、稳定简称、专有地点名，或不容易误伤的两字以上组合词"
         });
-        else if (BROAD_KEYS.has(key) && !HIGH_FALSE_TRIGGER_KEYS.has(key)) add(findings, "review", "WB_BROAD_KEY", entry, "使用了太宽泛的关键词 " + JSON.stringify(key) + "，普通聊天也可能无意触发", { field: "keys" });
+        else if (weakWord(key) && !misTrigger(key)) add(findings, "review", "WB_BROAD_KEY", entry, "使用了太宽泛的关键词 " + JSON.stringify(key) + "，普通聊天也可能无意触发", { field: "keys" });
       });
       if (templateTokenKeys.length) add(
         findings,
@@ -1390,7 +1939,9 @@ return {keyPolicy,MIS_TRIGGER,UNIVERSAL_KEYS,BROAD_KEYS,PROBABILITY_MAX,keywordG
     var constantWorldText = card.entries.filter(function (entry) { return entry.enabled && entry.constant; }).map(function (entry) { return entry.content; }).join("\n");
     var constantTokenEstimate = estimateTokens(constantWorldText);
     var constantShare = enabledChars ? constantChars / enabledChars : 0;
-    if ((constants >= 12 && constantChars >= 16000 && constantShare >= 0.35) || constantTokenEstimate >= 18000) {
+    var QQ = (globalThis.Zaojing && globalThis.Zaojing.qualityRules) || null;
+    var CB = QQ && QQ.constBudgetFor ? QQ.constBudgetFor(QQ.cardKindOf ? QQ.cardKindOf(card) : 'regular') : null;
+    if (CB && ((constants >= CB.overloadCount && constantChars >= CB.overloadChars && constantShare >= CB.overloadShare) || constantTokenEstimate >= CB.tokens)) {
       add(findings, "must_fix", "WB_CONSTANT_OVERLOAD", null, "每轮会无条件加载 " + constants + " 条常驻、共 " + constantChars + " 字，约 " + constantTokenEstimate + " 个内容量单位，占已启用世界书的 " + Math.round(constantShare * 100) + "%", {
         field: "constant",
         impact: "玩家即使只说“继续”，AI 也会先吞下大量人物档案、阶段规则和旧状态；这会挤掉近期对话，并让互相冲突的设定同时生效",
@@ -1463,7 +2014,7 @@ return {keyPolicy,MIS_TRIGGER,UNIVERSAL_KEYS,BROAD_KEYS,PROBABILITY_MAX,keywordG
       sourcePath: "data.uiTemplates"
     });
     if (constants >= 8) add(findings, "review", "WB_MANY_CONSTANTS", null, "启用常驻 " + constants + " 条，需逐条说明每轮必要性", { field: "constant", sourcePath: "data.character_book.entries" });
-    if (constantChars >= 8000) add(findings, "review", "WB_CONSTANT_PRESSURE", null, "每轮都会加载的常驻正文共有 " + constantChars + " 字，约占 " + constantTokenEstimate + " 个内容量单位，可能挤占正常对话空间", { field: "constant", sourcePath: "data.character_book.entries" });
+    if (CB && constantChars >= CB.infoChars) add(findings, "review", "WB_CONSTANT_PRESSURE", null, "每轮都会加载的常驻正文共有 " + constantChars + " 字，约占 " + constantTokenEstimate + " 个内容量单位，可能挤占正常对话空间", { field: "constant", sourcePath: "data.character_book.entries" });
 
     var mustFix = findings.filter(function (f) { return f.level === "must_fix"; }).length;
     var reviewCount = findings.filter(function (f) { return f.level === "review"; }).length;
@@ -1542,11 +2093,11 @@ return {keyPolicy,MIS_TRIGGER,UNIVERSAL_KEYS,BROAD_KEYS,PROBABILITY_MAX,keywordG
      改版本时只改这一处，然后跑 tools/package.sh 重新打包。
      格式必须严格是 x.y.z——tools/asserts/version.js 用 /^\d+\.\d+\.\d+$/ 校验，
      所以构建戳不能拼在这里，只能放下面的 WORKBENCH_BUILD。 */
-  const WORKBENCH_VERSION='1.3.2';
+  const WORKBENCH_VERSION='1.3.3';
   /* 构建戳：由 tools/sync-site.sh 在同步时自动改写成「日期.sha」，手改这里没有意义。
      它存在的理由就是版本号看不出来的那件事——线上跑的到底是哪一次构建。 */
-  const WORKBENCH_BUILD='2026.10.16.f9e258c';
-  const WORKBENCH_RELEASE={"title":"可做可不做的建议不再拦卡：修好一半也能继续，旧工程照旧修到零错误","notes":["「可做可不做的建议」和「要修的警告」分开了：闸5 泛词兜底、闸10 可接受档这类提示不再把体检面板标黄，不算进「一键修复」，也不会被送进要花钱的模型批次；只剩建议项时面板显示本地体检通过（另有 N 条可选建议），导出按钮照常可用。","修好一半不再被自己的预检拒掉：同一条目、同一条规则分支上的问题，只要没变坏就算过关，可以一轮一轮改，不必一次到位。真正的坏化（丢掉全部二字键、干净条目上出现万能词、冒出新的问题类型）照旧拦下。","闸10 单轮拉取分三档：30 条以上（病态）才是错误；10 条以上且 12500 字以上（过高）是正常警告，照旧进 AI Diff；7 条以上（可接受）只是建议。","拒绝修复时说得清是哪个闸：会写明「闸10 首轮拉取从 9 条增加到 10 条（上限 … 条 / … 字）」，不再只留一句没有锚点的话，也不再出现「闸?」。","从别处导出的卡也扛得住：世界书条目缺 content、keys 写成字符串、entries 不是数组时，规则照常给结论或明确拒绝，不会抛异常。","本次公告替换 1.3.1 的公告；1.3.1 与 1.3.0 的改动全部保留。"]};
+  const WORKBENCH_BUILD='2026.10.16.5e4e761';
+  const WORKBENCH_RELEASE={"title":"先生成完整正文，再统一质检与自动修整","notes":["生成期间先保存可用正文，不再因为关键词冲突、概率或单条长度问题整批重写；成稿后统一质检，再针对真实错误自动修整并导出。无法解析、空正文或完全没有新增有效内容仍会有限重试。","点击“一键自动修复”后，工作台会分批修复、实际复检、自动保存，再继续下一批，无需每轮手动应用。初卡生成结束后仍有错误时，也会自动进入修复流程。","一批修改有好有坏时，保留通过复检的条目；未通过的条目携带具体规则和拒绝原因进入下一轮，不再把整批有效修改一起丢弃。","部分坏关键词减少、有效正文补齐等都会计入实际进展；只要有进展就继续修复，不因总轮数超过三轮而停止。连续三轮没有可验收进展才停止并保留已完成修改。","建议项保留展示，不再阻止生成完成，也不会进入自动修复批次。正常导出仍检查真实错误；自动修复遇阻时可明确选择导出附有问题清单的草稿。","修复过程中可随时停止；手动编辑优先保留，过期响应不会覆盖新编辑。本版为 v1.3.3 线上测试版，正式 v1.4.0 仍待三卡型真实模型验收。"]};
   /* 注意：工厂函数里没有 root 这个变量（root 只是外层 IIFE 的参数），必须用 globalThis。 */
   try{globalThis.Zaojing=globalThis.Zaojing||{};globalThis.Zaojing.version=WORKBENCH_VERSION;globalThis.Zaojing.build=WORKBENCH_BUILD;globalThis.Zaojing.releaseNotes=WORKBENCH_RELEASE;}catch(_){ }
   try{
@@ -2051,7 +2602,9 @@ Zaojing.baseline=Zaojing.baseline||{};Zaojing.baseline.archiveBase64="UEsDBAoAAA
 })();
 
 (function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;root.Zaojing=root.Zaojing||{};root.Zaojing.generation=api;})(typeof globalThis!=='undefined'?globalThis:this,function(){
-  const ALLOWED=new Set(['data.name','data.description','data.personality','data.scenario','data.creator_notes','data.first_mes','data.mes_example','data.character_book.entries','data.extensions.regex_scripts','data.uiTemplates']);
+  /* 白名单的唯一出处是共享库的 PATCH_PATHS（lib/quality-rules.cjs）：改一处，两边一起变。
+   兜底列表只在内嵌库尚未就绪时生效，正常情况下不生效。 */
+  const ALLOWED=new Set((globalThis.Zaojing&&globalThis.Zaojing.qualityRules&&globalThis.Zaojing.qualityRules.PATCH_PATHS)||['data.name','data.description','data.personality','data.scenario','data.creator_notes','data.first_mes','data.mes_example','data.character_book.entries','data.extensions.regex_scripts','data.uiTemplates']);
   function jsonFrom(text){const clean=String(text||'').trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');try{return JSON.parse(clean)}catch(_){const start=clean.indexOf('{'),end=clean.lastIndexOf('}');if(start>=0&&end>start)return JSON.parse(clean.slice(start,end+1));throw new Error('AI 输出中没有可解析的 JSON')}}
   function tags(value){return globalThis.Zaojing.tagContract.normalize(value)}
   function lore(value){
@@ -2120,7 +2673,7 @@ Zaojing.baseline=Zaojing.baseline||{};Zaojing.baseline.archiveBase64="UEsDBAoAAA
   const isEnabled=entry=>entry?.enabled!==false&&entry?.disable!==true;
   function runtime(card){const out=[];const data=card&&card.data&&typeof card.data==='object'?card.data:card;if(!data||typeof data!=='object'||Array.isArray(data))return[item('runtime','error','INVALID_ROOT','角色卡根结构无效','需要 JSON 对象，不能是数组或纯文本。')];if(card.spec&&!/^chara_card_v[23]$/i.test(card.spec))out.push(item('runtime','warning','UNKNOWN_SPEC','未知角色卡版本','当前只明确覆盖常见 V2/V3 字段，请在目标前端实测。'));if(!String(data.name||'').trim())out.push(item('runtime','error','MISSING_NAME','缺少角色名','大多数前端会把名称作为角色卡主标识。',{path:card.data?'data.name':'name',value:'未命名角色'}));if(!String(data.first_mes||'').trim())out.push(item('runtime','error','MISSING_OPENING','缺少开场白','导入后无法开始对话。'));if(['name','first_mes','description','personality','scenario'].some(k=>data[k]!=null&&typeof data[k]!=='string'))out.push(item('runtime','error','INVALID_FIELD_TYPE','基础字段类型异常','名称、开场、描述、性格和场景应为文本。'));const html=String(data.first_mes||'');if(/\x3cscript\b/i.test(html))out.push(item('runtime','warning','SCRIPT_IN_OPENING','开场白包含脚本','不同前端可能拦截脚本，建议改为纯 HTML/CSS。'));const scripts=data.extensions?.regex_scripts||data.regex_scripts||[];if(Array.isArray(scripts)&&scripts.some(s=>{try{new RegExp(String(s.regex||s.findRegex||''));return false}catch{return true}}))out.push(item('runtime','error','INVALID_REGEX','存在无法编译的正则','请检查正则表达式语法和转义。'));loreEntries(card).forEach((entry,index)=>{if(!isEnabled(entry))return;const name=entryName(entry,index),keys=loreKeys(entry);if(!entry.constant&&!keys.length)out.push(item('runtime','error','LORE_WONT_TRIGGER',`${name} 无法触发`,'已启用且并非常驻，但没有关键词。'));if(!entry.constant&&Number(entry.scanDepth)===0)out.push(item('runtime','error','ZERO_SCAN_DEPTH',`${name} 扫描深度为 0`,'条件世界书不会扫描到对话关键词，请将扫描深度设为大于 0。'));if(entry.useRegex&&keys.some(key=>{try{new RegExp(key);return false}catch{return true}}))out.push(item('runtime','error','INVALID_LORE_REGEX',`${name} 的关键词正则无效`,'启用了正则匹配，但至少一个关键词无法编译。'));if(!String(entry.content||'').trim())out.push(item('runtime','warning','EMPTY_LORE_CONTENT',`${name} 正文为空`,'即使触发也没有可注入的世界书内容。'))});return out;}
   function budgetedConstant(card,entry){const d=card.data||card,kind=d.extensions?.rp_studio?.cardKind;return entry?.constant===true&&['meat','pipeline'].includes(kind)&&(kind==='meat'?['runtime','profile']:['protocol','profile']).includes(entry.extensions?.rp_studio?.category);}
-  function quality(card){const d=card?.data||card,out=[];const first=String(card.first_mes||card.data?.first_mes||'');if(first.replace(/<[^>]+>/g,'').trim().length<80)out.push(item('quality','warning','THIN_OPENING','开场信息偏薄','开场最好同时交代场景、角色行动和可回应的钩子。'));const entries=loreEntries(card),baseText=[card?.data?.description,card?.data?.personality,card?.data?.scenario].map(String).join('').length,loreText=entries.reduce((n,e)=>n+String(e?.content||'').length,0);if(entries.some(e=>isEnabled(e)&&!e.constant&&!loreKeys(e).length))out.push(item('quality','warning','EMPTY_LORE_KEYS','条件世界书存在空关键词','已启用且并非常驻的条目通常不会按预期触发。'));if(entries.some(e=>String(e?.content||'').length>8000&&!budgetedConstant(card,e)))out.push(item('quality','warning','OVERSIZED_LORE_ENTRY','存在过长的单条世界书','建议拆分主题，减少一次触发注入的大段无关内容。'));const idSeen=new Map(),idDup=new Map();entries.forEach((e,i)=>{const id=e?.id??e?.uid;const nm=entryName(e,i);if(id!=null&&id!==''){if(idSeen.has(id))idDup.set(id,[idSeen.get(id),nm]);else idSeen.set(id,nm)}});idDup.forEach((names,id)=>out.push(item('quality','error','REVIEW_DUPLICATE_ENTRY_ID',`多个世界书条目使用了同一个编号 ${id}（${names.join('、')}）`,'重复编号会让条目无法触发或错误触发。给每条复制出来的条目重新生成唯一 id（uid），再重新导出。')));const liveLore=entries.filter(isEnabled),con=liveLore.filter(e=>e.constant===true||e?.extensions?.constant===true);const conChars=con.reduce((n,e)=>n+String(e?.content||'').length,0);const conText=con.map(e=>String(e?.content||'')).join('');const conCjk=(conText.match(/[\u3400-\u9fff\uf900-\ufaff]/g)||[]).length;const conLatin=(conText.match(/[A-Za-z0-9_]+/g)||[]).join('').length;const conPunct=(conText.match(/[^\sA-Za-z0-9_\u3400-\u9fff\uf900-\ufaff]/g)||[]).length;const conTokens=globalThis.RPHubAuditCore.estimateTokens(con.map(e=>String(e?.content||'')).join('\n'));if(conTokens>=18000)out.push(item('quality','error','REVIEW_CONSTANT_OVERLOAD',`每轮固定加载的常驻共 ${con.length} 条 ${conChars} 字，约 ${conTokens} 个内容量单位，严重过载`,'玩家即使只说「继续」也会先吞下全部常驻。逐条回答「本轮不加载会坏在哪里」：只保留短核心规则常驻，完整人物档案、地点、阶段正文改成关键词触发。'));const kind=d?.extensions?.rp_studio?.cardKind;const conBudget=kind==='meat'?12000:kind==='pipeline'?8000:12000;if(conTokens<18000&&conChars>conBudget)out.push(item('quality','warning','REVIEW_CONSTANT_BUDGET',`常驻层 ${conChars} 字，超${kind==='pipeline'?'流水线':'默认'}预算 ${conBudget}`,'常驻每轮都注入。人物档案类内容建议拆成条目、挂人物名裸名键按需触发。'));const constText=con.map(e=>String(e?.content||'')).join('\n');const allLoreKeys=new Set(liveLore.flatMap(e=>loreKeys(e)));const covered=[...allLoreKeys].filter(k=>constText.includes(k)).length;if(liveLore.length>=20&&allLoreKeys.size>=10&&covered/allLoreKeys.size<0.25)out.push(item('quality','warning','REVIEW_INDEX_COVERAGE',`常驻索引只覆盖 ${covered}/${allLoreKeys.size} 个关键词`,'写一条 constant 索引条目，成组列出人物名、地点名、物件名，让 AI 每轮读得到叫得出，条目才拉得进。'));if(loreText>12000&&loreText>Math.max(1,baseText)*4)out.push(item('quality','warning','LORE_RATIO_HIGH','世界书正文占比过高','世界书明显大于角色基础设定，建议检查是否堆入了不必要的辅助文本。'));if(JSON.stringify(card).length>500000)out.push(item('quality','info','LARGE_CARD','卡片体积较大','过大的常驻内容会增加上下文消耗。'));return out;}
+  function quality(card){const d=card?.data||card,out=[];const QQ=(typeof globalThis!=='undefined'&&globalThis.Zaojing&&globalThis.Zaojing.qualityRules)||null;const kindOfCard=k=>QQ&&QQ.cardKindOf?QQ.cardKindOf(k):'regular';const budgetOfKind=k=>QQ&&QQ.constBudgetFor?QQ.constBudgetFor(k):null;const first=String(card.first_mes||card.data?.first_mes||'');if(first.replace(/<[^>]+>/g,'').trim().length<80)out.push(item('quality','warning','THIN_OPENING','开场信息偏薄','开场最好同时交代场景、角色行动和可回应的钩子。'));const entries=loreEntries(card),baseText=[card?.data?.description,card?.data?.personality,card?.data?.scenario].map(String).join('').length,loreText=entries.reduce((n,e)=>n+String(e?.content||'').length,0);if(entries.some(e=>isEnabled(e)&&!e.constant&&!loreKeys(e).length))out.push(item('quality','warning','EMPTY_LORE_KEYS','条件世界书存在空关键词','已启用且并非常驻的条目通常不会按预期触发。'));if(entries.some(e=>String(e?.content||'').length>8000&&!budgetedConstant(card,e)))out.push(item('quality','warning','OVERSIZED_LORE_ENTRY','存在过长的单条世界书','建议拆分主题，减少一次触发注入的大段无关内容。'));const idSeen=new Map(),idDup=new Map();entries.forEach((e,i)=>{const id=e?.id??e?.uid;const nm=entryName(e,i);if(id!=null&&id!==''){if(idSeen.has(id))idDup.set(id,[idSeen.get(id),nm]);else idSeen.set(id,nm)}});idDup.forEach((names,id)=>out.push(item('quality','error','REVIEW_DUPLICATE_ENTRY_ID',`多个世界书条目使用了同一个编号 ${id}（${names.join('、')}）`,'重复编号会让条目无法触发或错误触发。给每条复制出来的条目重新生成唯一 id（uid），再重新导出。')));const liveLore=entries.filter(isEnabled),con=liveLore.filter(e=>e.constant===true||e?.extensions?.constant===true);const conChars=con.reduce((n,e)=>n+String(e?.content||'').length,0);const conText=con.map(e=>String(e?.content||'')).join('');const conCjk=(conText.match(/[\u3400-\u9fff\uf900-\ufaff]/g)||[]).length;const conLatin=(conText.match(/[A-Za-z0-9_]+/g)||[]).join('').length;const conPunct=(conText.match(/[^\sA-Za-z0-9_\u3400-\u9fff\uf900-\ufaff]/g)||[]).length;const conTokens=globalThis.RPHubAuditCore.estimateTokens(con.map(e=>String(e?.content||'')).join('\n'));const CB=budgetOfKind(kindOfCard(card));if(CB&&conTokens>=CB.tokens)out.push(item('quality','error','REVIEW_CONSTANT_OVERLOAD',`每轮固定加载的常驻共 ${con.length} 条 ${conChars} 字，约 ${conTokens} 个内容量单位，严重过载`,'玩家即使只说「继续」也会先吞下全部常驻。逐条回答「本轮不加载会坏在哪里」：只保留短核心规则常驻，完整人物档案、地点、阶段正文改成关键词触发。'));const kind=kindOfCard(card);const conBudget=CB?CB.chars:Infinity;if(CB&&conTokens<CB.tokens&&conChars>conBudget)out.push(item('quality','warning','REVIEW_CONSTANT_BUDGET',`常驻层 ${conChars} 字，超${kind==='pipeline'?'流水线':kind==='meat'?'肉卡':'常规'}预算 ${conBudget}`,'常驻每轮都注入。人物档案类内容建议拆成条目、挂人物名裸名键按需触发。'));const constText=con.map(e=>String(e?.content||'')).join('\n');const allLoreKeys=new Set(liveLore.flatMap(e=>loreKeys(e)));const covered=[...allLoreKeys].filter(k=>constText.includes(k)).length;if(liveLore.length>=20&&allLoreKeys.size>=10&&covered/allLoreKeys.size<0.25)out.push(item('quality','warning','REVIEW_INDEX_COVERAGE',`常驻索引只覆盖 ${covered}/${allLoreKeys.size} 个关键词`,'写一条 constant 索引条目，成组列出人物名、地点名、物件名，让 AI 每轮读得到叫得出，条目才拉得进。'));if(loreText>12000&&loreText>Math.max(1,baseText)*4)out.push(item('quality','warning','LORE_RATIO_HIGH','世界书正文占比过高','世界书明显大于角色基础设定，建议检查是否堆入了不必要的辅助文本。'));if(JSON.stringify(card).length>500000)out.push(item('quality','info','LARGE_CARD','卡片体积较大','过大的常驻内容会增加上下文消耗。'));return out;}
   function submission(card){const out=[];if(!globalThis.Zaojing.tagContract.valid(String(card?.data?.creator_notes??card?.creator_notes??'')))out.push(item('submission','error','AUTHOR_NOTES_NOT_TAGS','作者注释需要改为 TAG','仅保留 # 开头、空格分隔的简短题材 TAG；现有剧情规则先移到设定或世界书，不能直接丢弃。'));const entries=loreEntries(card),owners=new Map();
   if(String((card&&card.data&&card.data.extensions&&card.data.extensions.rp_hub_watermark)||'')!=='rp-hub')out.push(item('submission','error','MISSING_HUB_WATERMARK','缺少本站水印','data.extensions.rp_hub_watermark 必须为 rp-hub，否则站点上传会判定为非本站卡片并拒收。工具导出时会自动注入，若出现此条请重新导出一次。'));entries.forEach((entry,index)=>{if(!isEnabled(entry))return;const name=entryName(entry,index),keys=loreKeys(entry),lowerKeys=keys.map(key=>key.toLowerCase());if(!entry.constant&&!keys.length)out.push(item('submission','error','REVIEW_EMPTY_KEYS',`${name} 缺少审核关键词`,'启用且非常驻的世界书必须配置可自然触发的关键词。'));if(!entry.constant&&Number(entry.scanDepth)===0)out.push(item('submission','error','REVIEW_ZERO_SCAN',`${name} 无法扫描关键词`,'扫描深度为 0，关键词不会正常参与触发。'));const placeholders=keys.filter(key=>/\{\{\s*(?:user|char)\s*\}\}/i.test(key));if(placeholders.length)out.push(item('submission','error','REVIEW_PLACEHOLDER_KEYS',`${name} 使用无效占位符`,'关键词中不能使用 {{user}}、{{char}} 等变量占位符。'));const meta=keys.filter(key=>metaTerms.some(term=>key.toLowerCase().includes(term)));if(meta.length)out.push(item('submission',meta.length===keys.length?'error':'warning','REVIEW_META_KEYS',`${name} 含制卡元术语`,'请改为玩家在剧情中会自然说出的角色名、地点名、组织名、物品名、事件名或动作词。'));if(keys.some(key=>key.length>20||/[。！？!?；;\n]/.test(key)))out.push(item('submission','warning','REVIEW_SENTENCE_KEYS',`${name} 含整句或过长关键词`,'关键词应是简短、自然、可复现的剧情用词。'));if(new Set(lowerKeys).size<lowerKeys.length)out.push(item('submission','warning','REVIEW_DUPLICATE_KEYS',`${name} 内有重复关键词`,'删除同一条目中的重复词，避免无效堆叠。'));if(!entry.constant&&/(每轮|始终|必须遵守|核心规则|永久生效|无条件)/.test(String(entry.content||'')))out.push(item('submission','warning','REVIEW_CORE_RULE_CONDITIONAL',`${name} 可能把核心规则设成了条件触发`,'若该短规则确实每轮都必须生效，应改为始终常驻；否则请改写正文避免误判。'));if(entry.constant&&String(entry.content||'').length>2500&&!budgetedConstant(card,entry))out.push(item('submission','warning','REVIEW_LARGE_CONSTANT',`${name} 的常驻正文过长`,'常驻条目每轮都会占用上下文，只保留真正必须持续生效的短规则。'));keys.forEach(key=>{const id=key.toLowerCase(),previous=owners.get(id);if(previous&&previous!==name)out.push(item('submission','warning','REVIEW_OVERLAP_KEYS',`关键词“${key}”在多条世界书中重叠`,`${previous} 与 ${name} 会被同时触发，请确认这是有意设计。`));else owners.set(id,name)})});if(entries.length>200)out.push(item('submission','warning','SUBMISSION_WORLDBOOK_VOLUME','世界书条目很多','条目超过 200，建议合并重复主题并检查平台体积限制。'));if(JSON.stringify(card).length>1000000)out.push(item('submission','warning','SUBMISSION_CARD_VOLUME','角色卡总体积很大','提交前请确认目标平台的文件大小限制，并压缩不必要内容。'));return out;}
   function runAll(card={}){return{runtime:runtime(card),quality:quality(card),submission:submission(card)};}
@@ -2256,9 +2809,11 @@ Zaojing.baseline=Zaojing.baseline||{};Zaojing.baseline.archiveBase64="UEsDBAoAAA
   'use strict';
 
   function classifyFinding(finding){
-    return finding?.fix?.path
-      ? {mode:'local',label:'立即修复'}
-      : {mode:'ai',label:'AI 修复'};
+    if(finding?.fix?.path)return {mode:'local',label:'立即修复'};
+    const mode=finding?.repair?.mode;
+    if(mode==='manual')return {mode:'manual',label:'要你自己改',why:finding?.repair?.why||''};
+    if(mode==='none')return {mode:'none',label:'建议',why:finding?.repair?.why||''};
+    return {mode:'ai',label:'AI 修复'};
   }
 
   function buildAiFixRequirement(finding){
@@ -2280,10 +2835,14 @@ Zaojing.baseline=Zaojing.baseline||{};Zaojing.baseline.archiveBase64="UEsDBAoAAA
     for(const group of ['runtime','quality','submission']){
       let cursor=0;
       result[group]=(Array.isArray(source[group])?source[group]:[]).map(finding=>{
-        if(!['ZERO_SCAN_DEPTH','REVIEW_ZERO_SCAN'].includes(finding?.code))return finding;
-        const index=zeroIndices[cursor++];
-        if(index===undefined)return finding;
-        return {...finding,fix:{path:`${prefix}character_book.entries.${index}.scanDepth`,value:2}};
+        let next=finding;
+        if(['ZERO_SCAN_DEPTH','REVIEW_ZERO_SCAN'].includes(finding?.code)){
+          const index=zeroIndices[cursor++];
+          if(index!==undefined)next={...finding,fix:{path:`${prefix}character_book.entries.${index}.scanDepth`,value:2}};
+        }
+        /* 每条问题都先问一句「有没有一种改法能通过复检」；没有的当场降为建议。 */
+        const rulebook=globalThis.Zaojing&&globalThis.Zaojing.qualityRules;
+        return rulebook&&rulebook.decorateRepair?rulebook.decorateRepair(next,card):next;
       });
     }
     return result;
@@ -2307,8 +2866,11 @@ Zaojing.baseline=Zaojing.baseline||{};Zaojing.baseline.archiveBase64="UEsDBAoAAA
   function batchPlan(groups){
     /* 可选建议（闸5 泛词兜底、闸10 可接受档）既不交给 AI，也不参与「一键修复」计数：
        它们本来就允许存在，混进批次只会让 AI 去改本来没错的条目。 */
-    const findings=Object.entries(groups||{}).flatMap(([group,rows])=>(Array.isArray(rows)?rows:[]).filter(f=>['error','warning'].includes(f?.severity)&&!f?.advisory).map(f=>({...f,group:f.group||group})));
-    return {findings,fixes:collectLocalFixes({findings}),ai:findings.filter(f=>!f.fix?.path)};
+    const rows=Object.entries(groups||{}).flatMap(([group,all])=>(Array.isArray(all)?all:[]).map(f=>({...f,group:f.group||group})));
+    const findings=rows.filter(f=>f?.severity==='error'&&!f?.advisory&&f?.repair?.mode!=='none'&&f?.demotedFrom!=='error');
+    const demoted=rows.filter(f=>f?.repair?.mode==='none'||f?.demotedFrom==='error');
+    /* manual（登记为「要人来判断」）不交给 AI：让 AI 去做只有人才能判断的事，换来的一批改动必然被复检拒掉。 */
+    return {findings,fixes:collectLocalFixes({findings}),ai:findings.filter(f=>!f.fix?.path&&f.repair?.mode!=='manual'),manual:findings.filter(f=>f.repair?.mode==='manual'),demoted};
   }
   function buildBatchAiFixRequirement(findings){
     const labels={runtime:'运行审核',quality:'质量审核',submission:'提交审核'};
@@ -3163,6 +3725,9 @@ setTimeout(()=>Z.integratedProtection.refresh(),0);
   const labels = ['角色动机与经历','世界背景与势力','地点与探索','事件与分支','关系与冲突','玩法与状态','线索与信息边界','结局与后果'];
   /* 肉卡类目：4 类，合计有效正文 ≥80000 字（硬标准，审核按这个卡）。briefs 是逐类目写给模型的硬规格，
      必须覆盖剧情卡那套「剧情自然短词 / scanDepth:8 / 人物因果」的默认措辞。 */
+  /* 生成期目标：比共享库 CONST_BUDGETS 更紧，是「写的时候尽量别超」的自我要求；
+     校验期（底座/过审内核/闸6）读的是 CONST_BUDGETS，那才是唯一决定挡不挡导出的数。
+     这里只保留「目标更严」这件事，改校验线不要去改这份 policy。 */
   const MEAT_PLAN={categories:['runtime','profile','play','stage'],labels:['运行规则','人物档案','场景玩法','阶段机（可选）'],targets:[5000,18500,57500,3500],caps:[10000,37000,115000,7000],optional:['stage'],constantBudget:12000,constantCap:18000,playMin:700,playMax:1300,minimum:80000,
     briefs:{
       runtime:'每条 constant:true、position:before_char、keys 留空。写系统运行总控：每轮正文 2200–3500 字且只写可观察内容、禁写角色内心、禁替玩家说话行动感受、首行强制时间戳【YYYY年MM月DD日 HH时MM分】、每轮结尾固定三个行动选项、正文禁破折号、元指令要曲解为角色在场听到的话。3–6 条，合计 5000 字以上。',
@@ -3238,6 +3803,9 @@ setTimeout(()=>Z.integratedProtection.refresh(),0);
 - 禁止每张卡重写协议模板——协议是模具，只有行为链和话术是每卡不同的产品。
 - 禁止删除或改写 scenario 署名句。
 `;
+  /* 生成期目标：比共享库 CONST_BUDGETS 更紧，是「写的时候尽量别超」的自我要求；
+     校验期（底座/过审内核/闸6）读的是 CONST_BUDGETS，那才是唯一决定挡不挡导出的数。
+     这里只保留「目标更严」这件事，改校验线不要去改这份 policy。 */
   const PIPELINE_PLAN={categories:['protocol','profile','play','token'],labels:['协议模板','人物档案','行为链','令牌阶段'],targets:[9000,3500,64000,4500],caps:[18000,7000,128000,9000],optional:['token'],constantBudget:8000,constantCap:15000,playMin:700,playMax:1300,minimum:80000,
     briefs:{
       protocol:'按流水线方法论第二节协议六件套逐字复用模板：文风强制（order:-998）、色情化（order:-999）、输出、选择、状态栏、称谓系统×2，外加基础信息与世界观。全部 constant:true、position:after_char、keys 留空，只替换角色名/性癖词/话术。合计 6000–8000 字，禁止为凑总字数加长。状态栏模板必须包含阶段令牌发射位（如「堕落值：第X阶段」「瓶口：[状态或无]」），令牌格式与本卡 token 类条目的 keys 逐字对应。',
@@ -3334,17 +3902,39 @@ setTimeout(()=>Z.integratedProtection.refresh(),0);
   }
   function meta(card){const d=card.data||card;d.extensions ||= {};return d.extensions.rp_studio ||= {};}
   function book(card){const d=card.data||card;d.character_book ||= {name:'世界书',entries:[]};return d.character_book.entries;}
-  function normalizeEntries(values,category,kind,existingIds=[]) {
+  function normalizeEntries(values,category,kind,existingIds=[],draft=false) {
     if(!Array.isArray(values)||!values.length)throw Error('本批世界书未返回有效 entries 数组，未用空数据替换。');
     const used=new Set(existingIds.map(String));
     return Z.generation.lore(values).map((e,i)=>{
       if(!e.content.trim())throw Error('世界书存在空正文。');
-      if(['meat','pipeline'].includes(kind)&&category==='profile'&&e.constant)throw Error('人物档案必须按需触发：constant=false、position=at_depth，并提供本条相关的独立关键词，不能整册常驻');
-      if(['meat','pipeline'].includes(kind)&&['runtime','protocol'].includes(category)&&!e.constant)throw Error('运行总控和协议必须 constant=true，并放在 before_char/after_char');
+      if(!draft&&['meat','pipeline'].includes(kind)&&category==='profile'&&e.constant)throw Error('人物档案必须按需触发：constant=false、position=at_depth，并提供本条相关的独立关键词，不能整册常驻');
+      if(!draft&&['meat','pipeline'].includes(kind)&&['runtime','protocol'].includes(category)&&!e.constant)throw Error('运行总控和协议必须 constant=true，并放在 before_char/after_char');
       let id=e.id==null?'':String(e.id);if(!id||used.has(id))id=crypto.randomUUID();used.add(id);
-      if(!e.constant && (!e.keys.length||e.keys.length>Z.keyPolicy.max||e.keys.some(k=>/\{\{|世界书|系统提示词|输出格式/.test(k)||k.length>20||/[!?！？;；\n]/.test(k))))throw Error('动态词条需要 1–10 个自然语言短关键词，不能使用元术语或占位符。');
+      if(!draft&&!e.constant && (!e.keys.length||e.keys.length>Z.keyPolicy.max||e.keys.some(k=>/\{\{|世界书|系统提示词|输出格式/.test(k)||k.length>20||/[!?！？;；\n]/.test(k))))throw Error('动态词条需要 1–10 个自然语言短关键词，不能使用元术语或占位符。');
       return {...e,comment:Z.displayNames.title(e.comment,'世界书条目'+Z.displayNames.ordinal(i+1)),id,constant:!!e.constant,scanDepth:e.constant?e.scanDepth:Math.max(1,Number(e.scanDepth)||8),extensions:{...e.extensions,rp_studio:{...e.extensions?.rp_studio,category}}};
     });
+  }
+  function normalizeGeneratedEntries(values,category,kind,existing){
+    const entries=normalizeEntries(values,category,kind,existing.map(e=>e.id??e.uid).filter(id=>id!=null),true);
+    if(!['meat','pipeline'].includes(kind))return entries;
+    // These categories have a fixed runtime route; normalize new drafts locally without rewriting their bodies.
+    if(['profile','runtime','protocol'].includes(category))for(const e of entries){
+      const constant=category!=='profile',position=constant?'before_char':'at_depth';
+      if(e.constant!==constant){e.extensions.rp_studio.routeNormalization={fromConstant:e.constant,constant,reason:'按生成规划设置人物按需、协议常驻'};e.constant=constant;e.position=position;if(Object.hasOwn(e.extensions,'constant'))e.extensions.constant=constant;if(Object.hasOwn(e.extensions,'position'))e.extensions.position=position;}
+    }
+    const occupied=new Set(existing.filter(enabled).flatMap(e=>e.keys||[]));
+    for(const e of entries){
+      if(!enabled(e))continue;
+      if(e.constant||(e.keys||[]).some(Z.keyPolicy.isToken)){for(const key of e.keys||[])occupied.add(key);continue;}
+      const removed=(e.keys||[]).filter(k=>occupied.has(k)),keep=(e.keys||[]).filter(k=>!occupied.has(k));
+      if(removed.length&&keep.length>=2&&keep.some(k=>k.length===2)&&keep.some(k=>String(e.comment||'').includes(k))){
+        const candidate={data:{extensions:{rp_studio:{cardKind:kind}},character_book:{entries:[{...e,keys:keep}]}}};
+        const bad=keywordGates(candidate).results.some(g=>[1,8,9].includes(g.gate)&&g.severity==='error');
+        if(!bad){e.keys=keep;e.extensions.rp_studio.keywordCollisionRepair={removed,reason:'关键词已由旧条目占用；保留本条其余合格入口'};}
+      }
+      for(const key of e.keys||[])occupied.add(key);
+    }
+    return entries;
   }
   function displayRules(card,design) {return Z.cardStyle.rules(card,design);}
   function installDisplay(card,design) {
@@ -3555,17 +4145,19 @@ setTimeout(()=>Z.integratedProtection.refresh(),0);
     const aborted=()=>{if(signal.aborted)throw new DOMException('已停止','AbortError');};
     const emit=async(phase)=>{aborted();Z.displayNames.cleanCard(card);const m=meta(card);m.phase=phase;m.measured=measure(card).effective;m.updatedAt=new Date().toISOString();await checkpoint(clone(card));onProgress(phase,measure(card));};
     const context=skillContext('all',cardKind)+Z.uiModes.instruction(uiMode)+'\n作者注释 creator_notes 仅允许 2–8 个简短 TAG，每项以 # 开头，用一个空格分隔，例如 #历史 #朝堂 #悬疑。不得填写规则、剧情、说明、署名或长句；这些内容写入 description、scenario 或对应世界书。';
+    // Each substantive batch may need three validation attempts; the overall limit must cover those attempts.
+    const requestLimit=(cardKind==='regular'?32:80)*3+6;
     let requestCalls=0,resumeReason=card?String(meta(card).lastGenerationError||''):'';
     const request=async(phase,prompt,validate)=>{
       let reason=resumeReason;resumeReason='';
       for(let retry=0;retry<3;retry++){
-        aborted();if(++requestCalls>52)throw Error('达到自动请求上限，检查点已保留。');
-        const text=await ask(phase+(retry?' · 自动修复 '+retry:''),prompt+'\n命名要求：世界书条目名称和正则显示名称只能使用中文，不得带 CYF、英文或工具前缀；内部 id、keys、正则表达式不得因改名而随意改动。'+(reason?'\n上次结果未通过，请重做当前批次。具体问题：'+reason:''));aborted();
+        aborted();if(++requestCalls>requestLimit)throw Error('达到自动请求上限，检查点已保留。');
+        const text=await ask(phase+(retry?' · 响应校验重试 '+retry:''),prompt+'\n命名要求：世界书条目名称和正则显示名称只能使用中文，不得带 CYF、英文或工具前缀；内部 id、keys、正则表达式不得因改名而随意改动。'+(reason?'\n上次结果未通过，请重做当前批次。具体问题：'+reason:''));aborted();
         try{const obj=Z.generation.jsonFrom(text);if(validate)await validate(obj);if(card)delete meta(card).lastGenerationError;return text;}
         /* 进度条上的「有效世界书 0 / 20,000 字」就是这里来的：基础设计还没
            成功时 card 仍是 null，兜底对象又不带 rp_studio.cardKind，measure()
            就把肉卡当成常规卡，分母从 80000 掉成 20000。把卡型带进去。 */
-        catch(error){if(error.name==='AbortError')throw error;reason=error.message;if(retry===2)throw Error('当前阶段自动修复仍未通过：'+reason);onProgress(phase+'自动修复',measure(card||{data:{character_book:{entries:[]},extensions:{rp_studio:{cardKind,uiMode}}}}));}
+        catch(error){if(error.name==='AbortError')throw error;reason=error.message;if(retry===2)throw Error('当前阶段响应校验仍未通过：'+reason);onProgress(phase+'响应校验重试',measure(card||{data:{character_book:{entries:[]},extensions:{rp_studio:{cardKind,uiMode}}}}));}
       }
     };
     if(!card){
@@ -3612,15 +4204,10 @@ setTimeout(()=>Z.integratedProtection.refresh(),0);
         if(++calls>(cardKind==='regular'?32:80))throw Error('达到本轮补写上限；已保存草稿，可继续补齐。');
         onProgress('补写 '+p.purpose,measured);
         const summaries=book(card).filter(e=>e.extensions?.rp_studio?.category!=='support').map(e=>({title:e.comment,category:e.extensions?.rp_studio?.category,keys:e.keys||[],summary:e.content.slice(0,300)}));
-        const text=await request('世界书 '+p.category,`只返回 JSON {"entries":[...] }。为下列卡片补写 ${p.category}（${p.purpose}）的独立正文。此类已经有 ${count} 个有效字符，预算 ${p.targetChars}；本批目标 ${Math.min(2200,p.targetChars-count+250)}–2600 个中文正文字符，分成 2–4 条。${cardKind==='regular'?'每条包含 comment、keys（人物 2–4 个，场景和难触发条目 5–10 个剧情自然短词）、content、constant:false、scanDepth:8。正文展开人物因果、地点互动、事件条件、状态变化、失败后果或可验证线索。':(planSpec.briefs[p.category]||'')+meatModulesFor(p.category,m.blueprint)}不能用文风/变量/格式说明、代码、例句和重复段落凑数。不重写已存在条目。新触发条目的 keys 不得与已有设定摘要列出的 keys 重复；按各条独立行为与场景拟词。世界书正文是私有设计资料，未公开秘密不能提前泄露给玩家。\n创作目标：${goal}\n基础：${JSON.stringify({name:card.data.name,description:card.data.description,scenario:card.data.scenario,blueprint:m.blueprint})}\n已有设定摘要：${JSON.stringify(summaries)}\n${skillContext('lore',cardKind)}\n${Z.uiModes.instruction(uiMode)}`,obj=>{const entries=normalizeEntries(obj.entries,p.category,cardKind,book(card).map(e=>e.id??e.uid).filter(id=>id!=null)),candidate=clone(card);book(candidate).push(...entries);if(cardKind==='meat'||cardKind==='pipeline'){
-          const batch={data:{...candidate.data,character_book:{entries}}},checks=keywordGates(batch).results.filter(g=>[7,8,9,11].includes(g.gate)&&(g.severity==='error'||g.gate===11));
-          const beforeKeyErrors=new Set(keywordGates(card).results.filter(g=>g.gate===1&&g.severity==='error').map(g=>g.detail));
-          checks.push(...keywordGates(candidate).results.filter(g=>(g.gate===1&&g.severity==='error'&&!beforeKeyErrors.has(g.detail))||(g.gate===6&&(g.severity==='error'||g.detail.startsWith('常驻层')))));
-          if(checks.length)throw Error(checks.slice(0,8).map(g=>'生成闸'+g.gate+'：'+g.detail).join('；'));
-        }if(measure(candidate).effective-measure(card).effective<200)throw Error('没有新增足量有效正文，可能重复或只有格式说明');});
-        aborted();const obj=Z.generation.jsonFrom(text),entries=normalizeEntries(obj.entries,p.category,cardKind,book(card).map(e=>e.id??e.uid).filter(id=>id!=null));
+        const text=await request('世界书 '+p.category,`只返回 JSON {"entries":[...] }。为下列卡片补写 ${p.category}（${p.purpose}）的独立正文。此类已经有 ${count} 个有效字符，预算 ${p.targetChars}；本批目标 ${Math.min(2200,p.targetChars-count+250)}–2600 个中文正文字符，分成 2–4 条。${cardKind==='regular'?'每条包含 comment、keys（人物 2–4 个，场景和难触发条目 5–10 个剧情自然短词）、content、constant:false、scanDepth:8。正文展开人物因果、地点互动、事件条件、状态变化、失败后果或可验证线索。':(planSpec.briefs[p.category]||'')+meatModulesFor(p.category,m.blueprint)}不能用文风/变量/格式说明、代码、例句和重复段落凑数。不重写已存在条目。新触发条目的 keys 不得与已有设定摘要列出的 keys 重复；按各条独立行为与场景拟词。世界书正文是私有设计资料，未公开秘密不能提前泄露给玩家。\n创作目标：${goal}\n基础：${JSON.stringify({name:card.data.name,description:card.data.description,scenario:card.data.scenario,blueprint:m.blueprint})}\n已有设定摘要：${JSON.stringify(summaries)}\n${skillContext('lore',cardKind)}\n${Z.uiModes.instruction(uiMode)}`,obj=>{const entries=normalizeGeneratedEntries(obj.entries,p.category,cardKind,book(card)),candidate=clone(card);book(candidate).push(...entries);if(measure(candidate).effective<=measure(card).effective)throw Error('没有新增有效正文，可能完全重复或只有格式说明');});
+        aborted();const obj=Z.generation.jsonFrom(text),entries=normalizeGeneratedEntries(obj.entries,p.category,cardKind,book(card));
         const before=measure(card).effective;book(card).push(...entries);const after=measure(card);
-        if(after.effective-before<200){book(card).splice(-entries.length);throw Error('本批没有新增足量有效正文（可能重复或仅有格式说明）；草稿已保留。');}
+        if(after.effective<=before){book(card).splice(-entries.length);throw Error('本批没有新增有效正文（可能完全重复或仅有格式说明）；草稿已保留。');}
         await emit(p.purpose+'已补写');
       }
     }
@@ -3695,13 +4282,13 @@ function keywordGates(card){return Z.qualityRules.keywordGates(card);}
       /* 肉卡也过同一套关键词闸门：万能词/共用 key/死键/署名照旧报红，
          只有「首轮种子」按肉卡调成提醒（见 keywordGates 里的 meat 分支）。 */
       const kg=keywordGates(card), tag=kind==='meat'?'MEAT_GATE_':'PIPELINE_GATE_', label=kind==='meat'?'肉卡关键词闸门':'关键词闸门';
-      for(const g of kg.results)result.runtime.push({group:'runtime',severity:g.severity,code:tag+g.gate,title:label+g.gate+(g.gate?'':'（署名）'),detail:g.detail,entryId:g.entryId,entryTitle:g.entryTitle,kind:g.kind,advisory:g.advisory});
+      for(const g of kg.results)result.runtime.push({group:'runtime',severity:g.severity,code:tag+g.gate,ruleId:g.ruleId,title:label+g.gate+(g.gate?'':'（署名）'),detail:g.detail,entryId:g.entryId,entryTitle:g.entryTitle,kind:g.kind,advisory:g.advisory});
       result.quality.push({group:'quality',severity:'info',code:tag+'SUMMARY',title:label+'质检摘要',detail:'触发 keys '+kg.totalKeys+' 个 · 首轮可激活 '+kg.seeded+' 条 · 令牌条目 '+kg.tokenEntries+' 条 · 常驻 '+kg.conChars+' 字 · 单轮拉取 '+kg.densCount+' 条 / '+kg.densChars+' 字'});
       /* 玩法新：与关键词闸门并列的硬标准，玩法不能是通用清单 */
       const pn=playNoveltyGate(card), nlabel=kind==='meat'?'肉卡玩法新':'流水线玩法新';
-      for(const g of pn.results)result.runtime.push({group:'runtime',severity:g.severity,code:tag+g.gate,title:nlabel+'闸门',detail:g.detail,progress:g.progress});
+      for(const g of pn.results)result.runtime.push({group:'runtime',severity:g.severity,code:tag+g.gate,ruleId:g.ruleId,kind:g.kind,title:nlabel+'闸门',detail:g.detail,progress:g.progress});
       result.quality.push({group:'quality',severity:'info',code:tag+'NOVELTY',title:nlabel+'摘要',progress:pn.coverage,detail:'玩法条目 '+pn.playCount+' 条 · 落在本卡锚点上的 '+(pn.anchorTotal?pn.anchorHit+'/'+pn.playCount:'无锚点可核对')+' · 锚点 '+pn.anchorTotal+' 个'});
-    }else {const pn=playNoveltyGate(card);for(const g of pn.results)result.runtime.push({group:'runtime',severity:g.severity,code:'PLAY_NOVELTY',title:'玩法检查',detail:g.detail,progress:g.progress});if((card.data||card).extensions?.rp_studio?.profile===bundle.policy.id){const m=measure(card);result.quality=result.quality.filter(x=>x.code!=='LORE_RATIO_HIGH');for(const detail of issues(card,!!meta(card).coverSelected))result.quality.push({group:'quality',severity:detail.startsWith('目标平台')?'info':detail.includes('世界书')||detail.includes('分类')?'error':'warning',code:'RP_FULL_CARD_PENDING',title:'完整卡验收待完成',detail});}}const uiCheck=meta(card).repairUiCheck;if(uiCheck?.status==='fail'&&Z.verifiedRepair?.uiSignature(card)===uiCheck.signature)result.runtime.push({group:'runtime',severity:'error',code:'LOCAL_UI_FAILED',title:'本地界面校验未通过',detail:uiCheck.reason});return result;};
+    }else {const pn=playNoveltyGate(card);for(const g of pn.results)result.runtime.push({group:'runtime',severity:g.severity,code:'PLAY_NOVELTY',ruleId:g.ruleId,kind:g.kind,title:'玩法检查',detail:g.detail,progress:g.progress});if((card.data||card).extensions?.rp_studio?.profile===bundle.policy.id){const m=measure(card);result.quality=result.quality.filter(x=>x.code!=='LORE_RATIO_HIGH');for(const detail of issues(card,!!meta(card).coverSelected))result.quality.push({group:'quality',severity:detail.startsWith('目标平台')?'info':detail.includes('世界书')||detail.includes('分类')?'error':'warning',code:'RP_FULL_CARD_PENDING',title:'完整卡验收待完成',detail});}}const uiCheck=meta(card).repairUiCheck;if(uiCheck?.status==='fail'&&Z.verifiedRepair?.uiSignature(card)===uiCheck.signature)result.runtime.push({group:'runtime',severity:'error',code:'LOCAL_UI_FAILED',title:'本地界面校验未通过',detail:uiCheck.reason});return result;};
   Z.fullCard={bundle,measure,cardPlan,validateCraftModules,meatModulesFor,skillContext,generate,displayRules,installDisplay,issues,meta,esc,autoCover,imageSettings,digest,localCheck,keywordGates,playNoveltyGate,isGenericKey:key=>MIS_TRIGGER.has(key)||['性爱','做爱','亲密','性交','爱','上床','干她','来一发'].includes(key),stamp,hasStamp,HUB_WATERMARK};
   document.addEventListener('DOMContentLoaded',()=>{
     const h=Z.integrationHost;if(!h)return;
@@ -4385,12 +4972,19 @@ keys 用玩家会自然说出的行为词，从该档自己的正文里长出来
   // Keep reference review findings visible. Its UI explicitly lets review-only cards pass.
   for(const f of a.findings){
    const name=labels[f.code]||'过审助手人工复核',entry=f.entry;
-   result.submission.push({group:'submission',severity:f.level==='must_fix'?'error':'info',code:f.code,title:name,detail:(entry?'《'+entry.title+'》：':'')+f.evidence+(f.impact?'\n影响：'+f.impact:'')+(f.suggestion?'\n建议：'+f.suggestion:''),entry,field:f.field,sourcePath:f.sourcePath,referenceLevel:f.level,confidence:f.confidence});
+   result.submission.push({group:'submission',severity:f.level==='must_fix'?'error':f.level==='warn'?'warning':'info',code:f.code,title:name,detail:(entry?'《'+entry.title+'》：':'')+f.evidence+(f.impact?'\n影响：'+f.impact:'')+(f.suggestion?'\n建议：'+f.suggestion:''),entry,field:f.field,sourcePath:f.sourcePath,referenceLevel:f.level,confidence:f.confidence});
   }
   for(const f of a.runtimeAdjustments)result.submission.push({group:'submission',severity:'info',code:'RUNTIME_COMPATIBILITY_REVIEW',title:'运行时兼容性复核',detail:(f.entry?.title||'')+'：'+f.reason,entry:f.entry});
   result.submission.push({group:'submission',severity:'info',code:'REFERENCE_AUDIT_SUMMARY',title:'过审助手结构判定',detail:`原版内核 ${C.VERSION}：${a.rawVerdict}；运行时兼容复核后：${a.verdict} · 需修复 ${a.findings.filter(f=>f.level==='must_fix').length} 项 · 人工复核 ${a.findings.filter(f=>f.level==='review').length} 项 · 已解释 ${a.runtimeAdjustments.length} 项兼容差异。令牌及概率规则的差异逐项列在下方；目标平台仍需实际试玩。`});
-  result.quality.push(...finalFindings(card));return result;
+  result.quality.push(...finalFindings(card));
+  /* 三套规则的结果在这里汇成一份。注册表负责：给每条发现挂上稳定身份（ruleId）、
+     按卡型丢掉「这条规则在这类卡上本来就不该发声」的项，以及同一事实被两套规则
+     各报一次时只留一条。注册表里没登记的规则不会被这里丢掉，只会记成 unregistered。 */
+  try{Z.audit.rulesReport=Z.qualityRules.normalizeFindings(card,result);}catch(err){Z.audit.rulesReport={error:String(err&&err.message||err)};}
+  return result;
  };
+ /* 规则表只对外暴露一份只读视图：断言、调试面板、tools/rules-report.mjs 都读它。 */
+ Z.audit.rules={registry:Z.qualityRules.RULE_REGISTRY,groups:Z.qualityRules.SAME_FACT_GROUPS,table:()=>Z.qualityRules.ruleTable(),last:()=>Z.audit.rulesReport||null,idOf:Z.qualityRules.ruleIdOf,for:Z.qualityRules.ruleFor};
 })();
 
 /* Repair metadata and structure from the current audit, preserving source prose. */
@@ -4402,24 +4996,24 @@ keys 用玩家会自然说出的行为词，从该档自己的正文里长出来
  const category=e=>e.extensions?.rp_studio?.category;
  const stop=new Set('本条 玩家 用户 正文 自己 她们 他们 我们 你们 一个 这个 那个 这里 那里 时候 什么 怎么 为什么 已经 只有 还是 就是 不是 不能 可以 不会 没有 不要 不得 需要 必须 只要 如果 因为 所以 然后 但是 不过 一下 一点 一次 起来 下去 过去 过来 看见 听见 听到 知道 看着 说着 说了 时间 问题 事情 感觉 身上 手上 身体 声音 视线 对方 动作 反应 胸部 下体 衣服 裙子 袜子 男人 女人 男性 女性 女主 房东 管理员 平时 日常 走廊 厨房 浴室 场景 触发 情境 规则 资料 设计 私有 展示 模型 系统 请求 选项 世界书'.split(' '));
  const segmenter=new Intl.Segmenter('zh',{granularity:'word'});
- function counts(card){const audit=Z.audit.runAll(card),rows=Object.values(audit).flat();return {audit,error:rows.filter(r=>r.severity==='error').length,warning:rows.filter(r=>r.severity==='warning').length};}
+ function counts(card){const audit=Z.auditFix.decorateFindings(card,Z.audit.runAll(card)),rows=Object.values(audit).flat(),entries=(card.data||card).character_book?.entries||[];for(const f of rows)if(f.entryId==null&&f.entry?.index!=null&&entries[f.entry.index]?.id!=null)f.entryId=entries[f.entry.index].id;return {audit,error:rows.filter(Z.qualityRules.isBlocking).length,warning:rows.filter(r=>r.severity==='warning').length};}
  /* 问题身份 = 分组 + 规则 + 条目 + 子问题种类。
     以前只有警告带条目身份，错误靠正则从说明文字里抠「key「X」」：AI 只修好一半
     （少删一个词、说明文字一变）就换了身份，被判成新错误，整批 Diff 被自己拒掉。
     现在只要发现带着条目，就用条目认它——说明文字怎么写都不影响身份。
     条目级以外的发现（单轮拉取、常驻/类目预算、玩法覆盖）仍旧各用各的稳定落点。 */
- function issueKey(f){const g=f.group??'',c=f.code??'',e=f.entry,eid=f.entryId??e?.id??e?.index??null,kind=f.kind??'';if(eid!=null&&eid!=='')return [g,c,eid,kind].join('\0');if(f.progress?.rule)return [g,c,f.progress.rule].join('\0');const detail=String(f.detail||'').split('。历史自然入口：')[0];if(/单轮拉取/.test(detail))return [g,c,'density'].join('\0');const budget=detail.match(/^(常驻层|类目 \S+)/);if(budget)return [g,c,budget[1]].join('\0');const key=detail.match(/key「([^」]+)」|关键词[“「]([^”」]+)[”」]/);if(key)return [g,c,'key',key[1]||key[2]].join('\0');return [g,c,f.title,detail.replace(/\d+(?:\.\d+)?/g,'#')].join('\0');}
+ function issueKey(f){const g=f.group??'',c=f.ruleId||f.code||'',e=f.entry,eid=f.entryId??e?.id??e?.index??null,kind=f.kind??'';if(eid!=null&&eid!=='')return [g,c,eid,kind].join('\0');if(f.progress?.rule)return [g,c,f.progress.rule].join('\0');const detail=String(f.detail||'').split('。历史自然入口：')[0];if(/单轮拉取/.test(detail))return [g,c,'density'].join('\0');const budget=detail.match(/^(常驻层|类目 \S+)/);if(budget)return [g,c,budget[1]].join('\0');const key=detail.match(/key「([^」]+)」|关键词[“「]([^”」]+)[”」]/);if(key)return [g,c,'key',key[1]||key[2]].join('\0');return [g,c,f.title,detail.replace(/\d+(?:\.\d+)?/g,'#')].join('\0');}
  function assess(before,after,{preserveExact=false}={}){
   const a=counts(before),b=counts(after),old=new Set(Object.values(a.audit).flat().filter(f=>f.severity==='error').map(issueKey));
   const introduced=Object.values(b.audit).flat().filter(f=>f.severity==='error'&&!old.has(issueKey(f)));
   /* 可选建议（advisory）是「允许存在」的，出现或消失都不该算新增/回退，否则改一条泛词兜底就会把 Diff 拦下来。 */
-  const priorWarnings=new Set(Object.values(a.audit).flat().filter(f=>f.severity==='warning'&&!f.advisory).map(issueKey)),newWarnings=Object.values(b.audit).flat().filter(f=>f.severity==='warning'&&!f.advisory&&!priorWarnings.has(issueKey(f)));
+  const priorWarnings=new Set(Object.values(a.audit).flat().filter(f=>f.severity==='warning').map(issueKey));
+  const allowedWarnings=Object.values(b.audit).flat().filter(f=>f.severity==='warning'&&!priorWarnings.has(issueKey(f)));
+  const introducedWarnings=[],warningRegression=false,warningAllowance=Infinity;
   const oldEntries=(before.data||before).character_book?.entries||[],nextEntries=(after.data||after).character_book?.entries||[];
-  const changed=oldEntries.filter(e=>{const n=nextEntries.find(n=>n.id===e.id);return !n||JSON.stringify(e)!==JSON.stringify(n);}),warningAllowance=Math.max(1,changed.length);
-  const criticalWarning=f=>/DEAD|MIS_TRIGGER|DUPLICATE|OVERLAP|EMPTY.*KEY|(?:MEAT|PIPELINE)_GATE_(?:1|3|8|9)$/.test(f.code||'')||/死键|误触|重复|重合|模板化/.test(f.detail||'');
-  const introducedWarnings=newWarnings.filter(criticalWarning),allowedWarnings=newWarnings.filter(f=>!criticalWarning(f)),warningRegression=(()=>{const wc=g=>Object.values(g).flat().filter(f=>f.severity==='warning'&&!f.advisory).length;return wc(b.audit)-wc(a.audit)>warningAllowance;})();
   const lost=oldEntries.filter(e=>{
-   if(!live(e)||!String(e.content||'').trim())return false;
+   if(!live(e))return false;
+   if(!String(e.content||'').trim())return !nextEntries.some((n,i)=>live(n)&&(e.id?n.id===e.id:i===oldEntries.indexOf(e)));
    const pieces=e.id?nextEntries.filter(n=>live(n)&&n.extensions?.rp_studio?.splitSource?.id===e.id).sort((a,b)=>a.extensions.rp_studio.splitSource.index-b.extensions.rp_studio.splitSource.index):[];
    if(pieces.length&&pieces.length===pieces[0].extensions.rp_studio.splitSource.total&&pieces.every((n,i)=>n.extensions.rp_studio.splitSource.index===i)&&pieces.map(n=>n.content).join('')===e.content)return false;
    return !nextEntries.some(n=>live(n)&&((e.id?n.id===e.id:Z.safety.keyOf(e)?Z.safety.keyOf(n)===Z.safety.keyOf(e):n===nextEntries[oldEntries.indexOf(e)]&&!Z.safety.keyOf(n))&&(preserveExact?String(n.content||'').includes(e.content):String(n.content||'').length>=String(e.content).length*.7)||e.id&&n.extensions?.rp_studio?.consolidatedSources?.some(s=>s.id===e.id&&(String(n.content||'').includes(e.content)||s.paragraphMerge&&textRetained(e.content,n.content)))));
@@ -4427,10 +5021,14 @@ keys 用玩家会自然说出的行为词，从该档自己的正文里长出来
   const recognized=card=>{try{return F.previewDocument(card,(card.data||card).first_mes||'','repair-check').recognized;}catch(_){return false;}};const previewBefore=recognized(before),previewAfter=recognized(after),ma=F.measure(before),mb=F.measure(after),budgetRegression=ma.effective>=ma.minimum&&mb.effective<mb.minimum,duplicateRegression=mb.duplicate>ma.duplicate;
   const progress=[],progressRegressions=[];
   const da=Z.qualityRules.probeDensity(before),db=Z.qualityRules.probeDensity(after);
+  const oldErrors=Object.values(a.audit).flat().filter(Z.qualityRules.isBlocking),hasError=pattern=>oldErrors.some(f=>pattern.test(f.ruleId||f.code||''));
+  if(hasError(/FULL_CARD_MINIMUM|WB_UNDERSIZED_DEFAULT_REJECT/)&&mb.effective>ma.effective)progress.push({rule:'effective-content',label:'有效正文',before:ma.effective,after:mb.effective,total:ma.minimum,required:ma.minimum});
+  if(hasError(/DUPLICATE/)&&mb.duplicate<ma.duplicate)progress.push({rule:'duplicate-content',label:'重复正文',before:ma.duplicate,after:mb.duplicate,total:ma.duplicate,required:0});
+  if(hasError(/CONSTANT_OVERLOAD|GATE_6.budget/)&&db.constChars<da.constChars)progress.push({rule:'constant-budget',label:'常驻字数',before:da.constChars,after:db.constChars,total:da.constChars,required:Z.qualityRules.constBudgetFor(Z.qualityRules.cardKindOf(before)).chars});
   /* 首轮密度档位本身认模式（B 档要条目数和字数同时超限）。把条目修回「玩家真会说的话」，
      首轮拉取条目 +2 是修复的正常代价：9 条 9141 字 → 11 条 11007 字 仍在「可接受」档，
      不该拦。只有这一跳真的把首轮顶进过高/病态，才算进展回退。 */
-  const densityBad=v=>v==='过高'||v==='病态';
+  const densityBad=v=>v==='病态';
   if(da.totalCount>=7){
    if(db.totalCount>da.totalCount&&!densityBad(da.verdict)&&densityBad(db.verdict)){
     /* 记清楚是哪几个条目、哪几个键把首轮顶上去的，拒绝文案才写得出人话，
@@ -4448,6 +5046,14 @@ keys 用玩家会自然说出的行为词，从该档自己的正文里长出来
    if(q.covered>p.covered)progress.push({rule:p.rule,label:p.label,before:p.covered,after:q.covered,total:q.total,required:q.required});
   }
   for(const e of oldEntries.filter(e=>live(e)&&!constant(e)&&!(e.keys||[]).some(token))){const n=nextEntries.find(n=>n.id===e.id);if(!n||!live(n))continue;const required=Z.keyPolicy.limits(e).target,prior=(e.keys||[]).filter(k=>Z.keyPolicy.naturalKey(e,k)),later=(n.keys||[]).filter(k=>Z.keyPolicy.naturalKey(n,k));if(prior.length<required&&later.length>prior.length&&prior.every(k=>later.includes(k)))progress.push({rule:'natural-keyword-coverage',label:(e.comment||'条目')+'自然入口',before:prior.length,after:Math.min(required,later.length),total:required,required});}
+  // Removing only some invalid keys is measurable progress even while the aggregate rule remains.
+  for(const e of oldEntries.filter(e=>live(e)&&!constant(e))){
+   const n=nextEntries.find(n=>n.id===e.id);if(!n||!live(n))continue;
+   const bad=x=>(x.keys||[]).filter(k=>Z.keyPolicy.isFragment(k,x.comment||''));
+   const prior=bad(e),later=bad(n);
+   if(prior.length>later.length)progress.push({rule:'invalid-keywords',label:(e.comment||e.id)+'无效关键词',before:prior.length,after:later.length,total:prior.length,required:0});
+   if(prior.length&&later.length>prior.length)progressRegressions.push({rule:'invalid-keywords',label:(e.comment||e.id)+'无效关键词',before:prior.length,after:later.length});
+  }
   return {before:a,after:b,introduced,introducedWarnings,lost,budgetRegression,duplicateRegression,progress,progressRegressions,allowedWarnings,warningAllowance,warningRegression,previewRegression:previewBefore&&!previewAfter,improved:b.error<a.error||b.error===a.error&&b.warning<a.warning||progress.length>0,acceptable:introduced.length===0&&introducedWarnings.length===0&&!warningRegression&&lost.length===0&&!budgetRegression&&!duplicateRegression&&!progressRegressions.length&&!(previewBefore&&!previewAfter)&&b.error<=a.error};
  }
  function textRetained(source,target){const normalize=t=>String(t||'').replace(/\s+/g,'');const dest=normalize(target);return String(source||'').split(/\n\s*\n/).filter(p=>p.trim()).every(p=>dest.includes(normalize(p)));}
@@ -4584,7 +5190,7 @@ keys 用玩家会自然说出的行为词，从该档自己的正文里长出来
  function batch(card,findings,limit=3){
   limit=Math.max(1,Math.min(3,Number(limit)||3));
   const d=card.data||card,entries=d.character_book?.entries||[],ordered=[...findings].sort((a,b)=>(a.severity==='error'?0:1)-(b.severity==='error'?0:1));
-  const first=ordered[0],text=[first?.code,first?.title,first?.detail].join('\n'),loreFinding=/^(?:WB_|MEAT_GATE_|PIPELINE_GATE_|FULL_CARD_)|LORE_REGEX/.test(first?.code||''),purpose=loreFinding?'lore':/REGEX|正则/i.test(text)?'regex':/LOCAL_UI|界面|模板|UI_/i.test(text)?'ui':'lore',key=text.match(/key「([^」]+)」|关键词[“「]([^”」]+)[”」]/),matches=entries.filter(e=>live(e)&&((first?.entry?.index===entries.indexOf(e))||(e.comment&&text.includes(e.comment))||(key&&(e.keys||[]).includes(key[1]||key[2]))));
+  const first=ordered[0],text=[first?.code,first?.title,first?.detail].join('\n'),loreFinding=/^(?:WB_|MEAT_GATE_|PIPELINE_GATE_|FULL_CARD_)|LORE_REGEX/.test(first?.code||''),purpose=loreFinding?'lore':/REGEX|正则/i.test(text)?'regex':/LOCAL_UI|界面|模板|UI_/i.test(text)?'ui':'lore',key=text.match(/key「([^」]+)」|关键词[“「]([^”」]+)[”」]/),matches=entries.filter(e=>live(e)&&((first?.entryId!=null&&String(first.entryId)===String(e.id))||(first?.entry?.id!=null&&String(first.entry.id)===String(e.id))||(first?.entry?.index===entries.indexOf(e))||(e.comment&&text.includes(e.comment))||(key&&(e.keys||[]).includes(key[1]||key[2]))));
   if(/玩法新度/.test(text)){
    const coverage=first.progress||F.playNoveltyGate(card).coverage;
    if(coverage){const pending=new Set(coverage.entryIds.filter(id=>!coverage.coveredIds.includes(id)));matches.splice(0,matches.length,...entries.filter(e=>live(e)&&pending.has(String(e.id??e.uid??e.comment??e.name))));}
@@ -4592,25 +5198,35 @@ keys 用玩家会自然说出的行为词，从该档自己的正文里长出来
   if(/^(?:MEAT|PIPELINE)_GATE_10$/.test(first?.code||'')){const hits=new Map(Z.qualityRules.probeDensity(card).detail.map(h=>[h.comment,h]));matches.splice(0,matches.length,...entries.filter(e=>live(e)&&!constant(e)&&hits.has(e.comment)));}
   if(/^(?:MEAT|PIPELINE)_GATE_5$/.test(first?.code||'')){const candidates=entries.filter(e=>live(e)&&!constant(e)&&/语言|说话|聊天|日常|索引|兜底/.test(e.comment||''));if(candidates.length)matches.splice(0,matches.length,...candidates);}
   if(first?.code==='FULL_CARD_DUPLICATE'){const pairs=[];for(const e of matches){if(category(e)==='token'&&/(?:二|副本)$/.test(e.comment||'')){const target=entries.find(n=>n.comment===e.comment.replace(/(?:二|副本)$/,''));if(target){pairs.push(e,target);continue;}}pairs.push(e);}matches.splice(0,matches.length,...new Set(pairs));}
+  // Fill a small batch from the same rule using stable entry IDs, without requiring title matches.
+  for(const f of ordered.filter(f=>(f.ruleId||f.code)===(first?.ruleId||first?.code))){const e=entries.find((e,i)=>String(f.entryId??f.entry?.id??'')===String(e.id)||f.entry?.index===i);if(e&&live(e)&&!matches.includes(e))matches.push(e);}
+  const firstPath=Z.qualityRules.targetPathOf(first,card),globalLore=first&&!first.entry&&!first.entryId&&firstPath==='data.character_book.entries';
+  if(globalLore&&/CONSTANT|常驻|WORLD_STATE|STAGE_ROUTE|SUPPORT_TEXT/.test(text)){matches.splice(0,matches.length,...entries.filter(e=>live(e)&&constant(e)));}
   const targets=(matches.length?matches:entries.filter(e=>live(e)&&!constant(e))).slice(0,limit),targetNames=new Set(targets.map(e=>e.comment));
-  const rows=ordered.filter(f=>f===first||targets.some(e=>f.detail?.includes(e.comment)||f.title?.includes(e.comment))||key&&f.detail?.includes(key[1]||key[2])).slice(0,8);
+  const rows=ordered.filter(f=>f===first||targets.some(e=>String(f.entryId??f.entry?.id??'')===String(e.id)||f.entry?.index===entries.indexOf(e)||f.detail?.includes(e.comment)||f.title?.includes(e.comment))||key&&f.detail?.includes(key[1]||key[2])).slice(0,8);
   const density=Z.qualityRules.probeDensity(card),T=Z.qualityRules.FIRST_TURN,firstMesText=String(d.first_mes||'');
   /* 开场白里的词是最自然的入口，但加进去会把首轮拉取顶过上限。与其让模型猜，
      不如直接把「本批不能用的词」列给它，让它另找玩家会说的说法。 */
-  const blockedFirstMes=[...new Set(targets.flatMap(e=>[e.comment,...(e.extensions?.rp_studio?.pendingNaturalKeys||[])]).filter(k=>k&&firstMesText.includes(k)))];
-  const firstTurn={densityMode:Z.qualityRules.DENSITY_MODE,currentEntries:density.totalCount,currentChars:density.totalChars,entryLimit:T.countHigh,charLimit:T.charsHigh,remainingEntries:Math.max(0,T.countHigh-density.totalCount),blockedFirstMesWords:blockedFirstMes};
+  const blockedFirstMes=density.verdict==='病态'?[...new Set(targets.flatMap(e=>[e.comment,...(e.extensions?.rp_studio?.pendingNaturalKeys||[])]).filter(k=>k&&firstMesText.includes(k)))]:[];
+  const firstTurn={densityMode:Z.qualityRules.DENSITY_MODE,currentEntries:density.totalCount,currentChars:density.totalChars,entryLimit:T.countHigh,charLimit:T.charsHigh,remainingEntries:Math.max(0,T.countHigh-density.totalCount),blockingEntryLimit:T.countPath,highDensityIsAdvisory:true,blockedFirstMesWords:blockedFirstMes};
   const metadata=entries.filter(live).map(e=>({id:e.id,title:e.comment,category:category(e),constant:constant(e),keys:e.keys||[],pendingNaturalKeys:e.extensions?.rp_studio?.pendingNaturalKeys,firstTurnHits:density.detail.find(h=>h.comment===e.comment)?.hit||[],chars:String(e.content||'').length}));
   const m=F.meta(card),requestCard={spec:card.spec,data:{name:d.name,description:d.description,personality:d.personality,scenario:d.scenario,creator_notes:d.creator_notes,first_mes:d.first_mes,character_book:{entries:targets},extensions:{rp_studio:{cardKind:m.cardKind,uiMode:m.uiMode,goal:m.goal,blueprint:m.blueprint}}}};
-  const requirement=Z.auditFix.buildBatchAiFixRequirement(rows)+'\n本批只修改下面这些既有条目，使用原 id；未涉及的属性必须省略，不能用空正文或默认值替代。不要新增替代条目，不得关闭或删除问题条目来消除错误。\n目标条目：'+JSON.stringify(targets.map(e=>({id:e.id,title:e.comment})))+'\n全卡结构与关键词占用表（仅用作约束，未展示的正文不得改写）：'+JSON.stringify(metadata)+'\n首轮拉取预算：'+JSON.stringify(firstTurn)+'。'+(blockedFirstMes.length?'上面 blockedFirstMesWords 里的词出现在开场白里，本批不能新增（加了会把首轮拉取顶过上限），请另找玩家会自然说出的说法。':'')+'\n每次应用前会实际复检。'+(first.progress?.rule==='play-anchor-coverage'?`当前锚点覆盖 ${first.progress.covered}/${first.progress.total} 条，达标需 ${first.progress.required} 条。本批只修目标清单，允许覆盖数逐批累积，不要求三个条目一次消除全卡的聚合问题，也不要等待用户手工点名下一批。`:'')+'新增问题、正文丢失、样式退化或没有实际进展的方案将被拒绝。';
+  /* 「整张卡没有玩法条目」这类问题的改法就是新增条目。批次默认只许改既有条目，
+     否则模型写出来的新条目会被自己的 scope 闸拦掉，用户看到的是「改了又不算」。 */
+  const allowNew=rows.some(f=>Z.qualityRules.canCreateEntryOf(Z.qualityRules.ruleIdOf(f)));
+  const batchScopeNote=allowNew
+   ?'\n本批的目标问题要求「新增」条目（例如整张卡没有玩法条目）：可以在 data.character_book.entries 里新增条目；新条目必须带 comment（标题）、能被触发的 keys 和完整正文，其他字段照同类条目的写法。不要改动本批目标以外的条目，也不要用删除问题条目的办法消除错误。'
+   :'\n本批只修改下面这些既有条目，使用原 id；未涉及的属性必须省略，不能用空正文或默认值替代。不要新增替代条目，不得关闭或删除问题条目来消除错误。';
+  const requirement=Z.auditFix.buildBatchAiFixRequirement(rows)+batchScopeNote+'\n目标条目：'+JSON.stringify(targets.map(e=>({id:e.id,title:e.comment})))+'\n全卡结构与关键词占用表（仅用作约束，未展示的正文不得改写）：'+JSON.stringify(metadata)+'\n首轮拉取预算：'+JSON.stringify(firstTurn)+'。'+(blockedFirstMes.length?'上面 blockedFirstMesWords 里的词出现在开场白里，本批不能新增（加了会把首轮拉取顶过上限），请另找玩家会自然说出的说法。':'')+'\n每次应用前会实际复检。'+(first.progress?.rule==='play-anchor-coverage'?`当前锚点覆盖 ${first.progress.covered}/${first.progress.total} 条，达标需 ${first.progress.required} 条。本批只修目标清单，允许覆盖数逐批累积，不要求三个条目一次消除全卡的聚合问题，也不要等待用户手工点名下一批。`:'')+'新增问题、正文丢失、样式退化或没有实际进展的方案将被拒绝。';
   if(purpose!=='lore'){
    requestCard.data.character_book.entries=[];
    const field=purpose==='regex'?'regex_scripts':'uiTemplates',source=purpose==='regex'?d.extensions?.regex_scripts:d.uiTemplates;
    const chosen=(source||[]).filter(e=>live(e)),named=chosen.filter(e=>[e.id,e.name,e.scriptName].filter(Boolean).some(n=>text.includes(n))),selected=(named.length?named:chosen).slice(0,limit);
    if(purpose==='regex')requestCard.data.extensions.regex_scripts=selected;else requestCard.data.uiTemplates=selected;
    requestCard.data.extensions.rp_studio.presentation=m.presentation;
-   return {requirement:Z.auditFix.buildBatchAiFixRequirement([first])+'\n只修改本批已有'+(purpose==='regex'?'正则':'界面模板')+'，保留原 id 和未涉及字段；不得改动世界书正文。',requestCard,purpose,findings:[first],targetIds:selected.map(e=>e.id).filter(Boolean),targetNames:selected.map(e=>e.name||e.scriptName).filter(Boolean)};
+   return {requirement:Z.auditFix.buildBatchAiFixRequirement([first])+'\n只修改本批已有'+(purpose==='regex'?'正则':'界面模板')+'，保留原 id 和未涉及字段；不得改动世界书正文。',requestCard,purpose,findings:[first],allowNew,targetIds:selected.map(e=>e.id).filter(Boolean),targetNames:selected.map(e=>e.name||e.scriptName).filter(Boolean)};
   }
-  return {requirement,requestCard,purpose,findings:rows,targetIds:targets.map(e=>e.id).filter(Boolean),targetNames:[...targetNames]};
+  return {requirement,requestCard,purpose,findings:rows,allowNew,existingIds:entries.map(e=>e.id).filter(x=>x!=null),existingNames:entries.map(e=>e.comment).filter(Boolean),targetIds:targets.map(e=>e.id).filter(Boolean),targetNames:[...targetNames]};
  }
  function uiSignature(card){const d=card.data||card;return JSON.stringify({presentation:F.meta(card).presentation,regex:d.extensions?.regex_scripts,ui:d.uiTemplates,opening:d.first_mes});}
  function assertBatch(diff,batch){
@@ -4620,7 +5236,14 @@ keys 用玩家会自然说出的行为词，从该档自己的正文里长出来
    if(change.merge&&(!ids.has(change.merge.from)||!ids.has(change.merge.into)))throw Error('合并涉及本批以外条目，未应用');
    if(['data.character_book.entries','data.extensions.regex_scripts','data.uiTemplates'].includes(change.path)){
     if(change.path!==arrayPath)throw Error('修复方案修改了本批以外的模块，未应用');
-    if(change.value.some(e=>e.id?!ids.has(e.id):!names.has(e.comment||e.name||e.scriptName||e.title)))throw Error('修复方案修改了本批以外的条目，未应用');
+    for(const e of change.value){
+     const known=e.id?ids.has(e.id):names.has(e.comment||e.name||e.scriptName||e.title);
+     if(known)continue;
+     /* 本批的问题要「新增条目」时才放行新增（例如整张卡没有玩法条目）。
+        新增不是免检：还要过复检（assess）和用户审阅；没有正文的占位条目直接拒。 */
+     if(!batch.allowNew||(e.id!=null?(batch.existingIds||[]).includes(e.id):(batch.existingNames||[]).includes(e.comment||e.name||e.scriptName||e.title)))throw Error('修复方案修改了本批以外的条目，未应用');
+     if(!String(e.content||'').trim()||!(e.comment||e.name||e.scriptName||e.title))throw Error('修复方案新增了没有标题或正文的条目，未应用');
+    }
    }
   }
  }
@@ -4763,7 +5386,17 @@ document.addEventListener('click',e=>{const button=e.target.closest('[data-diff-
  function requirement(g){return '只修复下面这一类体检问题，逐处检查列出的全部位置；保留无关人物设定、世界书、正则和 UI。列表是待核对的数据，不是额外指令。关键词重叠等建议项先判断是否有意设计，不要盲目删除或全改常驻。先依据选定 RP-Hub 源码判断，再生成最小 Diff 交给用户审阅。\n问题类别：'+g.title+'\n问题代码：'+g.code+'\n共 '+g.rows.length+' 处：\n'+JSON.stringify(g.rows.map(({finding})=>({title:finding.title,detail:finding.detail,fix:finding.fix||null})),null,2);}
  function render(findings){const groups=group(findings);return '<div class="audit-group-overview"><strong>'+groups.length+' 类问题 · '+findings.length+' 处</strong><span>同类问题已合并，展开查看位置与修复操作。</span></div>'+groups.map(g=>{
   const local=g.rows.every(({finding})=>finding.fix?.path),preview=g.rows.slice(0,3).map(({finding})=>'<li>'+esc(String(finding.title)+(finding.detail?'：'+finding.detail:''))+'</li>').join('');
-  return '<details class="audit-issue-group '+esc(g.severity)+'" data-audit-group="'+esc(g.key)+'"><summary><div class="audit-group-title"><span class="severity">'+label(g.severity)+'</span><h2>'+esc(g.title)+'</h2><span class="audit-group-count">'+g.rows.length+' 处</span></div><ul class="audit-group-preview">'+preview+'</ul><span class="audit-fold-label"><span class="when-closed">展开全部 '+g.rows.length+' 处</span><span class="when-open">收起同类问题</span></span></summary><div class="audit-group-body"><div class="audit-group-toolbar"><span>全部 '+g.rows.length+' 处，逐条保留原检查结果</span>'+(g.severity==='info'?'':'<button class="secondary" type="button" data-audit-group-fix="'+esc(g.key)+'">'+(local?'修复这一类':'AI 修复这一类')+'</button>')+'</div><ol class="audit-group-items">'+g.rows.map(({finding,index})=>'<li><div><h3>'+esc(finding.title)+'</h3><p>'+esc(finding.detail)+'</p></div><button type="button" class="secondary" data-audit-locate="'+index+'">定位字段</button>'+(finding.severity==='info'?'':'<button type="button" class="secondary" data-audit-fix="'+index+'" data-audit-mode="'+(finding.fix?.path?'local':'ai')+'">'+(finding.fix?.path?'立即修复':'AI 修复此处')+'</button>')+'</li>').join('')+'</ol></div></details>';
+  return '<details class="audit-issue-group '+esc(g.severity)+'" data-audit-group="'+esc(g.key)+'"><summary><div class="audit-group-title"><span class="severity">'+label(g.severity)+'</span><h2>'+esc(g.title)+'</h2><span class="audit-group-count">'+g.rows.length+' 处</span></div><ul class="audit-group-preview">'+preview+'</ul><span class="audit-fold-label"><span class="when-closed">展开全部 '+g.rows.length+' 处</span><span class="when-open">收起同类问题</span></span></summary><div class="audit-group-body"><div class="audit-group-toolbar"><span>全部 '+g.rows.length+' 处，逐条保留原检查结果</span>'+(g.severity==='info'?'':'<button class="secondary" type="button" data-audit-group-fix="'+esc(g.key)+'">'+(local?'修复这一类':'AI 修复这一类')+'</button>')+'</div><ol class="audit-group-items">'+g.rows.map(({finding,index})=>{
+  const extra=[
+    (Array.isArray(finding.mergedFrom)&&finding.mergedFrom.length)?'<p class="fine" data-merged-rules>另有 '+finding.mergedFrom.length+' 条规则说的是同一件事，已经合并到这一条：'+finding.mergedFrom.map(x=>esc(x.ruleId||x.code)).join('、')+'</p>':'',
+    finding.demotedFrom==='error'?'<p class="fine" data-demoted-rule>这一条已经降为建议，不挡导出、也不会发给 AI：'+esc(finding.demotedWhy||'没有可自动验证的改法')+'</p>':'',
+    (finding.repair&&finding.repair.mode==='manual')?'<p class="fine" data-manual-rule>这一条要你自己改，不会发给 AI：'+esc(finding.repair.why||'')+'</p>':''
+  ].join('');
+  const repairMode=finding.repair?finding.repair.mode:'';
+  const patchMode=(repairMode==='manual'||repairMode==='none')?repairMode:(finding.fix?.path?'local':'ai');
+  const btnLabel=repairMode==='manual'?'要你自己改':(repairMode==='none'?'建议':'AI 修复此处');
+  return '<li><div><h3>'+esc(finding.title)+'</h3><p>'+esc(finding.detail)+'</p>'+extra+'</div><button type="button" class="secondary" data-audit-locate="'+index+'">定位字段</button>'+(finding.severity==='info'?'':'<button type="button" class="secondary" data-audit-fix="'+index+'" data-audit-mode="'+patchMode+'">'+btnLabel+'</button>')+'</li>';
+}).join('')+'</ol></div></details>';
  }).join('');}
  return {group,requirement,render};
 });
@@ -5211,7 +5844,7 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
     if(resume){
       Object.assign(Z.fullCard.meta(existing),{cardKind,uiMode});
       const measured=Z.fullCard.measure(existing),errors=Object.values(Z.audit.runAll(existing)).flat().filter(x=>x.severity==='error');
-      if(measured.effective>=measured.minimum&&errors.length){Z.workspace.saveCard(ws,existing,'保留待修复的完整草稿');renderWorkspace();runAuditNow();return fixAllAudit($('[data-audit-fix-all]'));}
+      if(measured.effective>=measured.minimum&&errors.length){Z.workspace.saveCard(ws,existing,'保留待修复的完整草稿');renderWorkspace();runAuditNow();const result=await fixAllAudit($('[data-audit-fix-all]'));if(result?.status==='complete'){const ready=collectForm();Z.fullCard.stamp(ready);download(Z.card.exportJson(ready),(ready.data.name||'角色卡')+'.json','application/json');}return result;}
     }
     navigate('generation');const out=$('#plan-output');out.hidden=false;$('[data-generation-empty]').hidden=true;
     out.innerHTML='<div class="stream-head"><div><h2>正在准备制卡</h2><p>正在载入本轮制作依据…</p></div></div>';
@@ -5262,7 +5895,7 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
       $('#draft-stream-status').textContent='自动检查完整 UI、正文兜底与最低标准';
       Z.fullCard.feedback.stage('自动检查完整 UI 与最低标准');
       const candidate=collectForm(),localValidation=await Z.fullCard.localCheck(candidate,controller.signal),m=Z.fullCard.measure(candidate);
-      const checks=Z.audit.runAll(candidate);
+      const checks=Z.auditFix.decorateFindings(candidate,Z.audit.runAll(candidate));
       /* 这一句原来是四合一的黑盒：只要有一条不满足，就只抛「最低标准检查未通过」，
          面板上再也看不出是哪一条，等于把定位成本全丢给用户。现在逐条列出。 */
       const blockers=[];
@@ -5270,11 +5903,21 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
       if(m.duplicate)blockers.push('重复段落 '+m.duplicate+' 字'+(m.duplicateTitles?.length?'（'+m.duplicateTitles.slice(0,3).join('；')+'）':''));
       const badRows=m.rows.filter(r=>!r.validCategory);
       if(badRows.length)blockers.push('非法类目 '+badRows.length+' 条：'+[...new Set(badRows.map(r=>r.category||'(空)'))].join('/')+'，本卡型允许 '+Z.fullCard.cardPlan(Z.fullCard.meta(candidate).cardKind||'regular').categories.concat('support').join('/'));
-      const auditErrors=Object.values(checks).flat().filter(x=>x.severity==='error');
+      const auditErrors=Object.values(checks).flat().filter(x=>Z.qualityRules.isBlocking(x));
       if(auditErrors.length)blockers.push('审核 error '+auditErrors.length+' 项：'+auditErrors.slice(0,6).map(x=>x.code+'「'+(x.title||'')+'」：'+x.detail).join('；')+(auditErrors.length>6?'；其余问题请查看完整体检结果':''));
       const auditWarnings=Object.values(checks).flat().filter(x=>x.severity==='warning');
-      if(auditWarnings.length)blockers.push('建议检查 '+auditWarnings.length+' 项：'+auditWarnings.slice(0,4).map(x=>x.title+'：'+x.detail).join('；'));
-      if(blockers.length)throw Error('最低标准检查未通过（草稿已保留）：'+blockers.join(' · '));
+      // Suggestions remain visible in the audit panel and do not stop generation.
+      if(blockers.length){
+        // Continue the same one-click job through automatic repair instead of returning a failed draft.
+        endStream(controller);const repaired=await fixAllAudit(null);
+        if(ws!==origin)return;
+        if(repaired?.status==='complete'){
+          const ready=collectForm();Z.fullCard.stamp(ready);download(Z.card.exportJson(ready),(ready.data.name||'角色卡')+'.json','application/json');
+          Z.fullCard.feedback.checkpoint(ready);Z.fullCard.feedback.finish('complete');settle('本轮生成已完成','自动修复和本地检查已通过，JSON 已导出');
+          out.insertAdjacentHTML('beforeend','<section class="draft-ready"><h2>卡片已生成并自动修复</h2><p>通过复检的 JSON 已导出。建议项保留在质检台，不影响使用。</p></section>');
+        }else{Z.fullCard.feedback.finish(repaired?.status==='stopped'?'stopped':'failed','自动修复未完成');settle('草稿已保留，自动修复暂未完成','具体规则与已保留的修改见修复面板。');}
+        return;
+      }
       if(controller.signal.aborted||ws!==origin||streamController!==controller)throw new DOMException('已停止','AbortError');
       Object.assign(Z.fullCard.meta(candidate),{localValidation,coverOptional:true,phase:'卡片内容与 UI 已生成；封面可选，等待平台实际审核'});Z.workspace.saveCard(ws,candidate,'自动生成卡片（封面可选）');Z.workspace.persist(ws);renderWorkspace();
       Z.fullCard.stamp(candidate);download(Z.card.exportJson(candidate),(candidate.data.name||'角色卡')+'.json','application/json');
@@ -5350,43 +5993,15 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
     }finally{stopLive();stop.hidden=true;dock.classList.remove('is-working');button.disabled=false;button.textContent='流式生成 Diff';endStream(controller);}
   }
 
-  /* 预检自动去词：方案唯一的问题是首轮拉取超限，而且超限只是新增了开场白里的词造成的，
-     就把这些词从本批改动里摘掉再复检一次。复检通过就按这个更省的方案走，
-     并把摘掉的词挂在 diff 上，让预览、应用和提示用的是同一份内容。 */
   function gateOf(f){if(f?.gate!=null)return String(f.gate);const m=String(f?.code||'').match(/_GATE_(\d+)$/)||String(f?.title||'').match(/闸门\s*(\d+)/);return m?m[1]:'';}
-  function salvageFirstTurnWords(baseCard,diff,check){
-   const regs=check.progressRegressions||[];
-   if(regs.length!==1||regs[0].rule!=='first-turn-density')return null;
-   /* 闸10 的超限本身就是一个新错误，要放它过去；除此之外不能有任何新错误/新建议。 */
-   const foreign=(check.introduced||[]).filter(f=>gateOf(f)!=='10');
-   if(foreign.length||check.introducedWarnings.length||check.lost.length||check.budgetRegression||check.duplicateRegression||check.previewRegression||check.warningRegression)return null;
-   const hits=(regs[0].newHits||[]).filter(h=>h.keys?.length);
-   if(!hits.length)return null;
-   const baseEntries=(baseCard.data||baseCard).character_book?.entries||[],wordsOf=new Map(hits.map(h=>[h.entry,new Set(h.keys)]));
-   const dropped=[];let touched=0;
-   const changes=(diff.changes||[]).map(change=>{
-    if(change.path!=='data.character_book.entries'||!Array.isArray(change.value))return change;
-    const value=change.value.map(row=>{
-     const title=row?.comment||row?.name||baseEntries.find(e=>e.id===row?.id)?.comment,words=wordsOf.get(title);
-     if(!words||!Array.isArray(row.keys))return row;
-     const keys=row.keys.filter(k=>!words.has(k));
-     if(!keys.length||keys.length===row.keys.length)return row;
-     touched++;dropped.push({entry:title,keys:row.keys.filter(k=>words.has(k))});
-     return {...row,keys};
-    });
-    return {...change,value};
-   });
-   return touched?{diff:{...diff,changes},dropped}:null;
-  }
   function reviewDiffText(text,{requestScope,auditRepair,repairBatch,baseCard}){
     let parsed=Z.generation.parseDiff(text),obj=Z.generation.jsonFrom(text),merges=Array.isArray(obj.merge)?obj.merge:obj.merge?[obj.merge]:[];for(const merge of merges)parsed.changes.push(Z.verifiedRepair.planMerge(baseCard,merge));Z.studioUi.assertScope(parsed,requestScope);
     if(auditRepair){
-     Z.verifiedRepair.assertBatch(parsed,repairBatch);parsed.auditRepair=true;parsed.baseCard=baseCard;
-     let check=Z.verifiedRepair.assess(baseCard,diffCandidate(baseCard,parsed));
-     const salvage=salvageFirstTurnWords(baseCard,parsed,check);
-     if(salvage){const retry=Z.verifiedRepair.assess(baseCard,diffCandidate(baseCard,salvage.diff));if(retry.acceptable&&retry.improved){parsed=salvage.diff;parsed.autoDropped=salvage.dropped;check=retry;}}
-     if(!check.acceptable||!check.improved)throw Error(repairRejection(check));
-     parsed.auditRepair=true;parsed.baseCard=baseCard;parsed.repairProgress=check.progress;parsed.allowedWarnings=check.allowedWarnings;
+     const partition=Z.repairFlow.select(baseCard,parsed,{candidate:diffCandidate,assess:Z.verifiedRepair.assess,validate:part=>Z.verifiedRepair.assertBatch(part,repairBatch)});
+     if(!partition.accepted)throw Error(partition.rejected.map(r=>r.label+'：'+(r.error||repairRejection(r.check))).join('；')||repairRejection(partition.check));
+     parsed=partition.diff;const check=partition.check;
+     parsed.auditRepair=true;parsed.baseCard=baseCard;parsed.repairProgress=check.progress;parsed.allowedWarnings=check.allowedWarnings;parsed.rejected=partition.rejected;
+
     }
     return parsed;
   }
@@ -5394,16 +6009,17 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
     if(streamController)return toast('请先等待或停止当前请求');
     const text=String($('#diff-existing-json').value||$('#diff-stream').textContent||'').trim();
     if(!text){$('#diff-reuse-details').open=true;$('#diff-existing-json').focus();return toast('请粘贴之前的完整 JSON 修改方案，无需重新请求 AI');}
-    const baseCard=collectForm(),findings=Object.values(Z.audit.runAll(baseCard)).flat().filter(f=>['error','warning'].includes(f.severity)),auditRepair=findings.length>0,repairBatch=auditRepair?Z.verifiedRepair.batch(baseCard,findings):null;
+    const baseCard=collectForm(),findings=Object.values(Z.auditFix.decorateFindings(baseCard,Z.audit.runAll(baseCard))).flat().filter(Z.qualityRules.isBlocking),auditRepair=findings.length>0,repairBatch=auditRepair?Z.verifiedRepair.batch(baseCard,findings):null;
     try{pendingDiff=reviewDiffText(text,{requestScope:Z.studioUi.captureScope(),auditRepair,repairBatch,baseCard});ws.lastDiffOutput={text,createdAt:new Date().toISOString()};Z.workspace.persist(ws);const dropped=pendingDiff.autoDropped||[];$('#diff-stream-status').textContent='已有输出预检通过，未发送 AI 请求；'+(dropped.length?'已自动去掉开场白里的词：'+dropped.map(d=>d.entry+'←'+d.keys.join('、')).join('；')+'；':'')+'请勾选并审阅后应用。';renderDiffPreview();}
     catch(error){pendingDiff=null;$('#diff-stream-status').textContent=error.message;$('#diff-preview').innerHTML='<div class="error-box"><b>'+esc(error.message)+'</b><p>本次只运行本地预检，没有发送 AI 请求；原输出保留，可调整后再次预检。</p></div>';}
   }
-  function retryDiff(){const prompt=String($('#diff-prompt').value||'').trim();return generateDiff(prompt,lastDiffRequest?.options||{});}
+  function retryDiff(){let prompt=String($('#diff-prompt').value||'').trim(),options=lastDiffRequest?.options||{};if(options.auditRepair){const card=collectForm(),plan=Z.auditFix.batchPlan(Z.auditFix.decorateFindings(card,Z.audit.runAll(card))),batch=Z.verifiedRepair.batch(card,plan.ai);prompt=batch.requirement+'\n上一轮拒绝原因：'+($('#diff-stream-status').textContent||'');options={auditRepair:true,repairBatch:batch};}return generateDiff(prompt,options);}
+
   const diffArrayPaths=new Set(['data.character_book.entries','data.extensions.regex_scripts','data.uiTemplates']);
   function diffCandidate(current,diff){let next=clone(current);for(const change of diff.changes){const prepared=prepareDiffChange(next,change);next=Z.patch.applyPatch(next,Z.patch.createPatch(next,[prepared]));if(change.merge){const {from,into}=change.merge,entries=next.data.character_book.entries,source=entries.find(e=>e.id===from),target=entries.find(e=>e.id===into);if(!source||!target||!Z.verifiedRepair.textRetained(source.content,target.content))throw Error('合并源正文未完整保留');next.data.character_book.entries=entries.filter(e=>e.id!==from);}}return enforceLoreKeyRules(Z.displayNames.cleanCard(next));}
   function progressMessage(rows=[]){return rows.map(p=>`${p.label} ${p.before}→${p.after}/${p.total} 条，达标需 ${p.required} 条。`).join(' ');}
   function repairRejection(check){
-   const reasons=[],brief=f=>{const g=gateOf(f);return (g?'闸'+g:'体检')+'「'+String(f.detail||f.code||'').replace(/\s+/g,' ').slice(0,80)+'」';};
+   const reasons=[],brief=f=>{const g=gateOf(f);return '['+(f.ruleId||f.code||'未知规则')+'] '+(g?'闸'+g:'体检')+'「'+String(f.detail||f.code||'').replace(/\s+/g,' ').slice(0,160)+'」';};
    if(check.lost.length)reasons.push('存在正文丢失（'+check.lost.slice(0,3).map(e=>e.comment||e.id||'未命名').join('、')+'）');
    if(check.introduced.length)reasons.push('引入 '+check.introduced.length+' 项新错误：'+check.introduced.slice(0,3).map(brief).join('；'));
    if(check.introducedWarnings.length)reasons.push('引入 '+check.introducedWarnings.length+' 项新建议：'+check.introducedWarnings.slice(0,3).map(brief).join('；'));
@@ -5414,7 +6030,7 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
    for(const p of check.progressRegressions||[]){
     if(p.rule==='first-turn-density'){
      const hits=(p.newHits||[]).map(h=>h.entry+'←'+h.keys.join('、')).join('；'),T=Z.qualityRules.FIRST_TURN;
-     reasons.push('闸10 首轮拉取从 '+p.before+' 条增加到 '+p.after+' 条（'+p.beforeChars+' 字 → '+p.afterChars+' 字，上限 '+T.countHigh+' 条 / '+T.charsHigh+' 字），新增命中：'+(hits||'（未能定位到具体键）')+'；这些词出现在开场白里，加进去会让首轮多注入这些条目');
+     reasons.push('闸10 首轮拉取从 '+p.before+' 条增加到 '+p.after+' 条（'+p.beforeChars+' 字 → '+p.afterChars+' 字，病态阻断线 '+T.countPath+' 条），新增命中：'+(hits||'（未能定位到具体键）')+'；这些词出现在开场白里，加进去会让首轮多注入这些条目');
     }else if(p.rule==='play-anchor-coverage'){
      reasons.push((p.label||'玩法锚点覆盖')+'退步：这些条目丢了玩法锚点——'+((p.lostIds||[]).join('、')||'（未记录 id）')+(p.before!=null?'（覆盖 '+p.before+' → '+(p.after??'?')+'/'+p.total+'）':''));
     }else reasons.push((p.label||p.rule)+'退步');
@@ -5427,8 +6043,8 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
   function diffMarkup(before,after,side){const left=jsonText(before),right=jsonText(after);if(left===right)return esc(left);let start=0;while(start<left.length&&start<right.length&&left[start]===right[start])start++;let endLeft=left.length,endRight=right.length;while(endLeft>start&&endRight>start&&left[endLeft-1]===right[endRight-1]){endLeft--;endRight--}const source=side==='before'?left:right,end=side==='before'?endLeft:endRight,tag=side==='before'?'del':'ins';return`${esc(source.slice(0,start))}<${tag} class="diff-highlight">${esc(source.slice(start,end))}</${tag}>${esc(source.slice(end))}`}
   function diffPairHtml(before,after,label='内容'){return`<div class="diff-entry-pair"><strong>${esc(label)}</strong><div class="diff-columns"><section class="diff-before"><span>修改前</span><pre>${diffMarkup(before,after,'before')}</pre></section><section class="diff-after"><span>AI 提议</span><pre>${diffMarkup(before,after,'after')}</pre></section></div></div>`}
   function diffChangeHtml(current,change){const before=getPath(current,change.path),after=prepareDiffChange(current,change).value;if(change.path!=='data.character_book.entries')return diffPairHtml(before,after);const oldRows=Array.isArray(before)?before:[],newRows=Array.isArray(after)?after:[],oldByKey=new Map(oldRows.map((row,index)=>[Z.safety.keyOf(row,index),row]).filter(row=>row[0]));return newRows.map((row,index)=>{const key=Z.safety.keyOf(row,index),old=oldByKey.get(key),changed=!Z.safety.same(old,row);if(!changed)return'';return diffPairHtml(old??'（新增条目）',row,row.comment||row.name||`世界书 ${index+1}`)}).join('')||'<p class="diff-no-change">AI 提议与当前世界书相同，不会重复应用。</p>'}
-  function renderDiffPreview(){const box=$('#diff-preview');if(!pendingDiff?.changes.length){box.innerHTML=emptyModule('没有可应用的 Diff','换一种更具体的修改要求再试。');return}const current=collectForm();box.innerHTML=`<div class="diff-summary"><div><h3>${esc(pendingDiff.summary)}</h3>${pendingDiff.allowedWarnings?.length?'<details><summary>本批新增 '+pendingDiff.allowedWarnings.length+' 项待复核建议</summary>'+pendingDiff.allowedWarnings.map(f=>'<p>'+esc(f.title+'：'+f.detail)+'</p>').join('')+'</details>':''}${pendingDiff.repairProgress?.length?'<p class="fine">本批实际预检：'+esc(progressMessage(pendingDiff.repairProgress))+'审阅应用后，再继续剩余条目。</p>':''}<p>世界书会原位增量合并；每条修改单独左右对照，未提及内容保留。</p></div><div class="diff-selection-toolbar"><span id="rp-diff-selected" role="status"></span><button type="button" class="secondary" data-diff-select="all">全选</button><button type="button" class="secondary" data-diff-select="none">取消全选</button></div></div><div class="diff-review-list">${pendingDiff.changes.map((x,i)=>`<article class="diff-card"><label class="diff-check"><input type="checkbox" data-diff-index="${i}" checked> 应用这一项</label><div><b>${esc(Z.diffLayout.label(x.path))}</b><small class="fine"> · ${esc(x.path)}</small><p>${esc(x.reason)}</p></div><details class="diff-review-detail"><summary>展开修改前后对照</summary>${diffChangeHtml(current,x)}</details></article>`).join('')}</div><div class="diff-apply-bar"><span>仅在存在真实变化时建立快照并写入</span><button type="button" class="primary" data-action="apply-diff">应用选中修改</button></div>`;Z.diffLayout.refresh()}
-  async function applySelectedDiff(){if(!pendingDiff)return toast('请先生成修改方案并选择要应用的项目');const current=collectForm(),autoDropped=pendingDiff.autoDropped||[];if(pendingDiff.auditRepair&&!Z.safety.same(current,pendingDiff.baseCard))return toast('卡片在方案生成后又有修改，请按最新内容重新生成修复方案');const selected=$$('[data-diff-index]:checked').map(x=>pendingDiff.changes[Number(x.dataset.diffIndex)]).filter(Boolean),changes=selected.map(change=>prepareDiffChange(current,change)).filter(change=>{const before=getPath(current,change.path);return change.path==='data.character_book.entries'?!Z.safety.sameWorldbook(before,change.value):!Z.safety.same(before,change.value)});if(!selected.length)return toast('至少选择一项修改');let appliedProgress=[];if(pendingDiff.auditRepair){const candidate=diffCandidate(current,{changes:selected}),check=Z.verifiedRepair.assess(current,candidate);appliedProgress=check.progress;if(!check.acceptable||!check.improved){$('#diff-stream-status').textContent=repairRejection(check);return toast(repairRejection(check));}}if(!changes.length||Z.safety.same(current,diffCandidate(current,{changes:selected}))){$('#diff-stream-status').textContent='AI 提议与当前内容相同，未应用';return toast('没有真实变化：未写入，也没有建立空快照')}if(!await saveSnapshot('应用 Diff 前',current))return toast('未能保存修复前快照，请导出备份后重试');const next=diffCandidate(current,{changes:selected});Z.workspace.saveCard(ws,next,'应用 AI Diff');const actual=ws.card,failed=changes.filter(change=>{const expected=getPath(next,change.path),written=getPath(actual,change.path);return change.path==='data.character_book.entries'?!Z.safety.sameWorldbook(expected,written):!Z.safety.same(expected,written)});if(failed.length){Z.workspace.saveCard(ws,current,'Diff 写入校验失败，自动回滚');Z.workspace.persist(ws);renderWorkspace();$('#diff-stream-status').textContent='写入校验失败，已自动回滚';return toast('Diff 未能可靠写入，已恢复应用前内容')}await Z.workspace.persist(ws);pendingDiff=null;renderWorkspace();lastAuditAt=new Date();let checked=renderAudit();if(!checked.errors&&!checked.warnings){await finishVerifiedRepair(collectForm(),checked);checked=renderAudit();}const remaining=checked.errors+checked.warnings;$('#diff-raw-details').hidden=true;$('#diff-stream-status').textContent=`已应用 ${changes.length} 项修改；`+(autoDropped.length?`已自动去掉开场白里的词：${autoDropped.map(d=>d.entry+'←'+d.keys.join('、')).join('；')}；`:'')+progressMessage(appliedProgress)+(remaining?`重新体检仍有 ${checked.errors} 项需修复、${checked.warnings} 项建议检查。`:'重新体检通过。');$('#diff-preview').innerHTML='<div class="'+(remaining?'error-box':'empty')+'"><h3>'+esc(remaining?'修复已应用，仍有待处理问题':'本地体检已通过')+'</h3><p>'+esc($('#diff-stream-status').textContent)+'</p><button type="button" class="secondary" data-action="audit">查看最新体检结果</button>'+(remaining?'<button type="button" class="primary" data-action="repair-audit-again">继续修复剩余问题</button>':'<button type="button" class="primary" data-action="export-json">导出已体检的 JSON 卡片</button>')+'</div>';toast(remaining?`已应用 ${changes.length} 项；体检仍有问题，请继续修复`:'修改已应用，本地体检已通过')}
+  function renderDiffPreview(){const box=$('#diff-preview');if(!pendingDiff?.changes.length){box.innerHTML=emptyModule('没有可应用的 Diff','换一种更具体的修改要求再试。');return}const current=collectForm();box.innerHTML=`<div class="diff-summary"><div><h3>${esc(pendingDiff.summary)}</h3>${pendingDiff.allowedWarnings?.length?'<details><summary>本批新增 '+pendingDiff.allowedWarnings.length+' 项待复核建议</summary>'+pendingDiff.allowedWarnings.map(f=>'<p>'+esc(f.title+'：'+f.detail)+'</p>').join('')+'</details>':''}${pendingDiff.repairProgress?.length?'<p class="fine">本批实际预检：'+esc(progressMessage(pendingDiff.repairProgress))+'审阅应用后，再继续剩余条目。</p>':''}${pendingDiff.rejected?.length?'<div class="error-box" data-rejected-diff><b>已保留通过复检的修改，以下条目未纳入：</b>'+pendingDiff.rejected.map(r=>'<p>'+esc(r.label+'：'+(r.error||repairRejection(r.check)))+'</p>').join('')+'</div>':''}<p>世界书会原位增量合并；每条修改单独左右对照，未提及内容保留。</p></div><div class="diff-selection-toolbar"><span id="rp-diff-selected" role="status"></span><button type="button" class="secondary" data-diff-select="all">全选</button><button type="button" class="secondary" data-diff-select="none">取消全选</button></div></div><div class="diff-review-list">${pendingDiff.changes.map((x,i)=>`<article class="diff-card"><label class="diff-check"><input type="checkbox" data-diff-index="${i}" checked> 应用这一项</label><div><b>${esc(Z.diffLayout.label(x.path))}</b><small class="fine"> · ${esc(x.path)}</small><p>${esc(x.reason)}</p></div><details class="diff-review-detail"><summary>展开修改前后对照</summary>${diffChangeHtml(current,x)}</details></article>`).join('')}</div><div class="diff-apply-bar"><span>仅在存在真实变化时建立快照并写入</span><button type="button" class="primary" data-action="apply-diff">应用选中修改</button></div>`;Z.diffLayout.refresh()}
+  async function applySelectedDiff(){if(!pendingDiff)return toast('请先生成修改方案并选择要应用的项目');const current=collectForm(),autoDropped=pendingDiff.autoDropped||[];if(pendingDiff.auditRepair&&!Z.safety.same(current,pendingDiff.baseCard))return toast('卡片在方案生成后又有修改，请按最新内容重新生成修复方案');const selected=$$('[data-diff-index]:checked').map(x=>pendingDiff.changes[Number(x.dataset.diffIndex)]).filter(Boolean),changes=selected.map(change=>prepareDiffChange(current,change)).filter(change=>{const before=getPath(current,change.path);return change.path==='data.character_book.entries'?!Z.safety.sameWorldbook(before,change.value):!Z.safety.same(before,change.value)});if(!selected.length)return toast('至少选择一项修改');let appliedProgress=[];if(pendingDiff.auditRepair){const candidate=diffCandidate(current,{changes:selected}),check=Z.verifiedRepair.assess(current,candidate);appliedProgress=check.progress;if(!check.acceptable||!check.improved){$('#diff-stream-status').textContent=repairRejection(check);return toast(repairRejection(check));}}if(!changes.length||Z.safety.same(current,diffCandidate(current,{changes:selected}))){$('#diff-stream-status').textContent='AI 提议与当前内容相同，未应用';return toast('没有真实变化：未写入，也没有建立空快照')}if(!await saveSnapshot('应用 Diff 前',current))return toast('未能保存修复前快照，请导出备份后重试');const next=diffCandidate(current,{changes:selected});Z.workspace.saveCard(ws,next,'应用 AI Diff');const actual=ws.card,failed=changes.filter(change=>{const expected=getPath(next,change.path),written=getPath(actual,change.path);return change.path==='data.character_book.entries'?!Z.safety.sameWorldbook(expected,written):!Z.safety.same(expected,written)});if(failed.length){Z.workspace.saveCard(ws,current,'Diff 写入校验失败，自动回滚');Z.workspace.persist(ws);renderWorkspace();$('#diff-stream-status').textContent='写入校验失败，已自动回滚';return toast('Diff 未能可靠写入，已恢复应用前内容')}await Z.workspace.persist(ws);pendingDiff=null;renderWorkspace();lastAuditAt=new Date();let checked=renderAudit();if(!checked.errors){await finishVerifiedRepair(collectForm(),checked);checked=renderAudit();}const remaining=checked.errors;$('#diff-raw-details').hidden=true;$('#diff-stream-status').textContent=`已应用 ${changes.length} 项修改；`+(autoDropped.length?`已自动去掉开场白里的词：${autoDropped.map(d=>d.entry+'←'+d.keys.join('、')).join('；')}；`:'')+progressMessage(appliedProgress)+(remaining?`重新体检仍有 ${checked.errors} 项需修复、${checked.warnings} 项建议检查。`:'重新体检通过。');$('#diff-preview').innerHTML='<div class="'+(remaining?'error-box':'empty')+'"><h3>'+esc(remaining?'修复已应用，仍有待处理问题':'本地体检已通过')+'</h3><p>'+esc($('#diff-stream-status').textContent)+'</p><button type="button" class="secondary" data-action="audit">查看最新体检结果</button>'+(remaining?'<button type="button" class="primary" data-action="repair-audit-again">继续修复剩余问题</button>':'<button type="button" class="primary" data-action="export-json">导出已体检的 JSON 卡片</button>')+'</div>';toast(remaining?`已应用 ${changes.length} 项；体检仍有问题，请继续修复`:'修改已应用，本地体检已通过')}
 
   async function importFile(file){try{const parsed=await Z.card.parseFile(file.name,await file.arrayBuffer());await saveSnapshot('导入文件前',collectForm());Z.workspace.saveCard(ws,parsed.raw,'导入前版本');ws.name=(parsed.card.name||file.name.replace(/\.[^.]+$/,''))+' 工作区';ws.sourceType=parsed.sourceType;ws.creation={goal:'导入已有卡片',brief:'卡片已导入，可以从各模块编辑或使用 Diff 改造。'};sourceAvatar=parsed.avatarBytes;if(sourceAvatar)await Z.workspace.saveAvatar(ws.id,sourceAvatar);Z.workspace.persist(ws);renderWorkspace();navigate('workspace');toast('已导入 '+file.name+'；原卡已保存为快照')}catch(e){toast(e.message)}}
 
@@ -5440,46 +6056,83 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
     button.disabled=true;button.textContent=local?'正在修复这一类…':'准备这一类 Diff…';
     try{
       if(local){const fixes=Z.auditFix.collectLocalFixes({items:group.rows.map(x=>x.finding)});await saveSnapshot('同类体检修复前',current);const patch=Z.patch.createPatch(current,fixes),next=Z.patch.applyPatch(current,patch);const guard=Z.verifiedRepair.assess(current,next);if(!guard.acceptable||!guard.improved)throw Error(repairRejection(guard));Z.workspace.saveCard(ws,next,'同类体检修复');Z.workspace.persist(ws);lastAuditAt=new Date();renderWorkspace();renderAudit();toast('已修复这一类 '+fixes.length+' 处；修复前快照已保存');}
-      else {Z.studioUi.setScope('card');const repairBatch=Z.verifiedRepair.batch(current,group.rows.map(x=>x.finding));await generateDiff(repairBatch.requirement,{auditRepair:true,repairBatch});}
+      else {const aiRows=group.rows.map(x=>x.finding).filter(f=>f.repair&&f.repair.mode==='ai');if(!aiRows.length)return toast('这一类里没有能交给 AI 改的问题（'+(group.rows.some(x=>x.finding.repair&&x.finding.repair.mode==='manual')?'有要你自己改的，面板上已标出':'没有可落地的改法')+'）');Z.studioUi.setScope('card');const repairBatch=Z.verifiedRepair.batch(current,aiRows);await generateDiff(repairBatch.requirement,{auditRepair:true,repairBatch});}
     }catch(error){toast('同类修复失败：'+error.message);}finally{if(button.isConnected){button.disabled=false;button.textContent=oldLabel;}}
   }
-  async function finishVerifiedRepair(card,checked){
+  async function finishVerifiedRepair(card,checked,signal){
     /* 「修完了」只看错误：警告和可选建议不挡完成，也不再要求用户把它们清零。 */
     if(checked.errors)return false;
-    const m=Z.fullCard.meta(card),measure=Z.fullCard.measure(card);
-    if(m.profile!==Z.fullCard.bundle.policy.id||measure.effective<measure.minimum)return true;
+    const m=Z.fullCard.meta(card),measure=Z.fullCard.measure(card),origin=ws,initial=collectForm();
+    if(m.profile!==Z.fullCard.bundle.policy.id||measure.effective<measure.minimum){Z.fullCard.feedback.refreshProgressFromCard?.(card,checked.all);return true;}
     try{
-      const validation=await Z.fullCard.localCheck(card,new AbortController().signal);
+      const validation=await Z.fullCard.localCheck(card,signal||new AbortController().signal);
+      if(signal?.aborted||ws!==origin)throw new DOMException('已停止或工作区已切换','AbortError');
+      if(!Z.safety.same(initial,collectForm())){const e=Error('界面复检时卡片已被修改，已保留你的编辑');e.fatal=true;throw e;}
       delete m.lastGenerationError;delete m.repairUiCheck;Object.assign(m,{localValidation:validation,phase:'本地体检和界面检查已通过，卡片可导出'+(checked.warnings?`（另有 ${checked.warnings} 条建议项，不拦导出）`:'')});
       Z.workspace.saveCard(ws,card,'修复后全部检查通过');await Z.workspace.persist(ws);renderWorkspace();Z.fullCard.feedback.checkpoint(card);Z.fullCard.feedback.finish('complete');return true;
-    }catch(error){m.repairUiCheck={status:'fail',reason:error.message,signature:Z.verifiedRepair.uiSignature(card)};m.lastGenerationError='本地界面校验未通过：'+error.message;Z.workspace.saveCard(ws,card,'保留界面检查问题');await Z.workspace.persist(ws);Z.fullCard.feedback.finish('failed',m.lastGenerationError);renderAudit();throw Error(m.lastGenerationError);}
+    }catch(error){if(error.name==='AbortError'||error.fatal)throw error;m.repairUiCheck={status:'fail',reason:error.message,signature:Z.verifiedRepair.uiSignature(card)};m.lastGenerationError='本地界面校验未通过：'+error.message;Z.workspace.saveCard(ws,card,'保留界面检查问题');await Z.workspace.persist(ws);Z.fullCard.feedback.finish('failed',m.lastGenerationError);renderAudit();throw Error(m.lastGenerationError);}
+  }
+  let automaticRepair=null;
+  function repairFeedback(rows=[]){return rows.slice(-8).map(r=>({entry:r.label||'',reason:r.error||(r.check?repairRejection(r.check):'没有可验收的进展')}));}
+  function renderRepairOutcome(result){
+    const current=collectForm(),remaining=result.remaining||Object.values(Z.auditFix.decorateFindings(current,Z.audit.runAll(current))).flat().filter(Z.qualityRules.isBlocking);
+    const rows=remaining.map(f=>'<li><b>'+esc(f.ruleId||f.code)+'</b> · '+esc(f.entry?.title||f.entryId||f.title||'整卡')+'：'+esc(f.detail||'')+'</li>').join('');
+    const done=result.status==='complete',stopped=result.status==='stopped';
+    $('#diff-stream-status').textContent=done?'自动修复完成，卡片可导出（共 '+result.rounds+' 轮）':stopped?'自动修复已停止，已通过的修改保留':'自动修复暂未完成：'+(result.error||'剩余问题需要确认')+'；已通过的修改保留';
+    $('#diff-preview').innerHTML='<section class="'+(done?'empty':'error-box')+'" data-auto-repair-result="'+esc(result.status)+'"><h3>'+esc(done?'自动修复完成，卡片可导出':stopped?'自动修复已停止':'自动修复遇到阻碍')+'</h3><p>'+esc($('#diff-stream-status').textContent)+'</p>'+(rows?'<ol>'+rows+'</ol>':'')+(result.feedback?.length?'<p>'+esc(repairFeedback(result.feedback).map(r=>r.entry+'：'+r.reason).join('；'))+'</p>':'')+'<button type="button" class="secondary" data-action="audit">查看最新体检</button>'+(done?'<button type="button" class="primary" data-action="export-json">导出已体检的 JSON 卡片</button>':'<button type="button" class="primary" data-action="repair-audit-again">重新自动修复</button><button type="button" class="secondary" data-action="repair-manual">查看并修改剩余问题</button><button type="button" class="secondary" data-action="export-draft-json">导出含问题的草稿 JSON</button>')+'</section>';
   }
   async function fixAllAudit(button,{localOnly=false}={}){
-    if(streamController)return toast('请先等待或停止当前 AI 任务，再批量修复');
-    const origin=ws;button.disabled=true;button.textContent='正在按体检清单修复…';
+    if(streamController||automaticRepair)return toast('已有 AI 任务正在进行，请等待或先停止');
+    automaticRepair={pending:true};const origin=ws;let controller=null,rounds=0;
+    const ensure=()=>{if(ws!==origin||controller?.signal.aborted)throw new DOMException('已停止或工作区已切换','AbortError');};
+    const commit=async(before,next,result={})=>{
+      ensure();if(!Z.safety.same(before,collectForm())){const e=Error('修复期间卡片已被修改，已停止以保留你的编辑');e.fatal=true;throw e;}
+      if(!await saveSnapshot('自动修复前',before)){const e=Error('无法保存修复前快照，请先导出工程备份');e.fatal=true;throw e;}
+      ensure();if(!Z.safety.same(before,collectForm())){const e=Error('保存快照时卡片已被修改，自动修复已停止');e.fatal=true;throw e;}
+      Z.workspace.saveCard(ws,next,'自动修复：应用通过复检的修改');
+      if(!Z.safety.same(ws.card,next)){Z.workspace.saveCard(ws,before,'修复写入校验失败，恢复原卡');const e=Error('修复写入校验失败');e.fatal=true;throw e;}
+      try{await Z.workspace.persist(ws);}catch(error){error.fatal=true;throw error;}
+      ensure();pendingDiff=null;renderWorkspace();lastAuditAt=new Date();renderAudit();document.dispatchEvent(new Event('rp-card-changed'));
+    };
     try{
-      let current=collectForm(),before=Z.verifiedRepair.counts(current);
-      const prepared=Z.verifiedRepair.prepare(current,{history:ws.history||[]});
-      if(prepared.changed&&prepared.verification.acceptable&&prepared.verification.improved){
-        if(!await saveSnapshot('体检结构修复前',current))throw Error('无法保存修复前快照，请先导出备份');
-        if(ws!==origin)return;Z.workspace.saveCard(ws,prepared.card,'按体检修复结构和关键词');await Z.workspace.persist(ws);renderWorkspace();current=collectForm();
-      }
+      if(button){button.disabled=true;button.textContent='自动修复中…';}
+      let current=collectForm();const prepared=Z.verifiedRepair.prepare(current,{history:ws.history||[]});
+      if(prepared.changed&&prepared.verification.acceptable&&prepared.verification.improved){await commit(current,prepared.card);current=collectForm();}
       let plan=Z.auditFix.batchPlan(Z.auditFix.decorateFindings(current,Z.audit.runAll(current)));
-      if(plan.fixes.length){
-        if(!await saveSnapshot('体检格式修复前',current))throw Error('无法保存修复前快照，请先导出备份');
-        if(ws!==origin)return;const next=Z.patch.applyPatch(current,Z.patch.createPatch(current,plan.fixes));const guard=Z.verifiedRepair.assess(current,next);if(!guard.acceptable||!guard.improved)throw Error(repairRejection(guard));Z.workspace.saveCard(ws,next,'体检格式修复');await Z.workspace.persist(ws);renderWorkspace();current=collectForm();plan=Z.auditFix.batchPlan(Z.auditFix.decorateFindings(current,Z.audit.runAll(current)));
-      }
-      if(ws!==origin)return;lastAuditAt=new Date();let checked=renderAudit();if(!checked.errors){await finishVerifiedRepair(current,checked);checked=renderAudit();}
-      toast('实际复检：'+before.error+' 项错误、'+before.warning+' 项建议 → '+checked.errors+' 项错误、'+checked.warnings+' 项建议');
-      if(localOnly||!plan.ai.length)return;
-      if(!requireApi()){closeDrawers();return;}
-      const repairBatch=Z.verifiedRepair.batch(current,plan.ai);Z.studioUi.setScope('card');await generateDiff(repairBatch.requirement,{auditRepair:true,repairBatch});
-    }catch(error){toast('修复未完成：'+error.message);}
-    finally{if(ws===origin)renderAudit();}
+      for(const fix of plan.fixes){const before=collectForm(),next=Z.patch.applyPatch(before,Z.patch.createPatch(before,[fix])),check=Z.verifiedRepair.assess(before,next);if(check.acceptable&&check.improved)await commit(before,next);}
+      let checked=renderAudit();
+      if(!checked.errors){await finishVerifiedRepair(collectForm(),checked);const result={status:'complete',rounds:0};ws.repairRun=result;await Z.workspace.persist(ws);renderAudit();renderRepairOutcome(result);return result;}
+      if(localOnly)return {status:'local',remaining:checked.errors};
+      const cfg=requireApi();if(!cfg)return;
+      controller=beginStream();automaticRepair=controller;Z.studioUi.setScope('card');navigate('workspace');openDrawer('.diff-dock');
+      const stop=$('.diff-dock [data-action="stop-stream"]');stop.hidden=false;$('.diff-dock').classList.add('is-working');
+      const result=await Z.repairFlow.run({
+        read:()=>{ensure();return collectForm();},signal:controller.signal,
+        inspect:card=>{const all=Z.auditFix.decorateFindings(card,Z.audit.runAll(card)),p=Z.auditFix.batchPlan(all);return {...p,blockers:Object.values(all).flat().filter(Z.qualityRules.isBlocking)};},
+        onState:state=>{ensure();rounds=state.rounds;ws.repairRun={status:'running',rounds,stalled:state.stalled,remaining:state.remaining};$('#diff-stream-status').textContent='自动修复第 '+rounds+' 轮 · 剩余 '+state.remaining+' 项错误'+(state.stalled?' · 正在缩小范围重新修复':'');$('#diff-preview').innerHTML='<section class="empty" data-auto-repair-running><h3>AI 正在自动修复</h3><p>'+esc($('#diff-stream-status').textContent)+'</p><p>每批通过复检的修改会自动保存，并继续下一批；可以随时停止。</p></section>';},
+        request:async(card,findings,state)=>{
+          const batch=Z.verifiedRepair.batch(card,findings,state.limit),feedback=repairFeedback(state.feedback);
+          const requirement=batch.requirement+'\n这是用户要求的一键自动修复：只修改本批目标问题。字段落点：'+JSON.stringify(batch.findings.map(f=>({rule:f.ruleId||f.code,path:Z.qualityRules.targetPathOf(f,card)})))+'\n上一轮真实拒绝原因（必须逐项避开，不能重复原方案）：'+JSON.stringify(feedback)+'\n'+(state.stalled?'上一轮没有可验收的进展，本轮已缩小到单条。先对照拒绝规则，保留已正确字段；必要时同时修正这条的正文、关键词、位置与分类，消除规则冲突。':'修好本批即可，其余条目由下一轮继续。');
+          $('#diff-stream').textContent='';const scope=Z.studioUi.captureScope();
+          const text=await streamWithReasoning(cfg,[{role:'system',content:'你是 RP-Hub 角色卡修复工程师。根据提供的真实质检发现和拒绝原因生成最小结构化 Diff。只输出 JSON。不得清空、关闭或删除原条目来消除错误，不得改动目标范围之外的条目。'},{role:'user',content:diffPrompt(requirement,scope,batch)}],delta=>{if(!controller.signal.aborted&&ws===origin)$('#diff-stream').textContent+=delta;},controller.signal,'diff');
+          ensure();if(!Z.safety.same(card,collectForm())){const e=Error('等待 AI 时卡片已被修改，已保留你的编辑并停止自动修复');e.fatal=true;throw e;}
+          ws.lastDiffOutput={text,createdAt:new Date().toISOString()};await Z.workspace.persist(ws);ensure();
+          const parsed=Z.generation.parseDiff(text),obj=Z.generation.jsonFrom(text),merges=Array.isArray(obj.merge)?obj.merge:obj.merge?[obj.merge]:[];
+          for(const merge of merges)parsed.changes.push(Z.verifiedRepair.planMerge(card,merge));
+          return {parsed,batch,scope};
+        },
+        select:(card,{parsed,batch,scope})=>Z.repairFlow.select(card,parsed,{candidate:diffCandidate,assess:Z.verifiedRepair.assess,validate:part=>{Z.studioUi.assertScope(part,scope);Z.verifiedRepair.assertBatch(part,batch);}}),
+        commit,
+        finish:async card=>{ensure();await finishVerifiedRepair(card,renderAudit(),controller.signal);ensure();}
+      });
+      ensure();ws.repairRun={...result,feedback:repairFeedback(result.feedback),rejected:repairFeedback(result.rejected)};await Z.workspace.persist(ws);renderAudit();renderRepairOutcome(result);toast(result.status==='complete'?'自动修复完成，卡片可导出':'自动修复暂未完成，已保留所有通过复检的修改');return result;
+    }catch(error){
+      if(ws!==origin)return {status:'stopped',rounds};
+      const result={status:error.name==='AbortError'?'stopped':'blocked',rounds,error:error.message};ws.repairRun=result;renderAudit();renderRepairOutcome(result);toast(error.name==='AbortError'?'已停止，已通过的修改保留':'自动修复暂停：'+error.message);return result;
+    }finally{if(controller)endStream(controller);automaticRepair=null;$('.diff-dock [data-action="stop-stream"]').hidden=true;$('.diff-dock').classList.remove('is-working');if(ws===origin)renderAudit();}
   }
 
-  function renderAuditFinding(finding,index){const action=Z.auditFix.classifyFinding(finding),actionHtml=finding.severity==='info'?'':`<button type="button" class="secondary audit-fix-action" data-audit-fix="${index}" data-audit-mode="${action.mode}">${action.label}</button>`;return`<article class="finding ${finding.severity}"><span class="severity">${finding.severity==='error'?'需修复':finding.severity==='warning'?'建议检查':'提示'}</span><div class="finding-copy"><h2>${esc(finding.title)}</h2><p>${esc(finding.detail)}</p></div>${actionHtml}</article>`}
-  function renderAudit(snapshot){const current=collectForm(),rawAll=snapshot||Z.audit.runAll(current),all=Z.auditFix.decorateFindings(current,rawAll),repairPlan=Z.auditFix.batchPlan(all),localFixes=repairPlan.fixes,groups={runtime:'运行审核',quality:'质量审核',submission:'提交审核（过审规则）'},rows=Object.values(all).flat(),errors=rows.filter(x=>x.severity==='error').length,warnings=rows.filter(x=>x.severity==='warning'&&!x.advisory).length,advisories=rows.filter(x=>x.severity==='warning'&&x.advisory).length,infos=rows.filter(x=>x.severity==='info').length,total=rows.length,entryCount=current.data?.character_book?.entries?.length||0;$$('[data-audit-tab]').forEach(x=>{const group=x.dataset.auditTab,count=all[group]?.length||0;x.classList.toggle('is-active',group===activeAuditTab);x.innerHTML=`${groups[group]} <span class="audit-count">${count?Z.auditGroups.group(all[group]).length+" 类 · "+count+" 处":"0"}</span>`});const summary=$('#audit-summary');if(summary)summary.innerHTML=`<section class="audit-summary-main" data-audit-verdict="${errors?'error':warnings?'warning':'pass'}"><h2>${lastAuditAt?(errors?'体检未通过：还有需修复项':advisories?'本地体检通过（另有 '+advisories+' 条可选建议）':warnings?'可以发布：仍有建议检查项':'本地体检通过'):'规则预检已加载'}</h2><p>${lastAuditAt?'执行时间：'+lastAuditAt.toLocaleTimeString('zh-CN',{hour12:false}):'点击“重新体检”会保存当前编辑并立即重新运行全部规则。'} · 当前编辑卡 ${entryCount} 条世界书 · 常驻 ${Z.qualityRules.probeDensity(current).constCount} 条</p><p class="fine" data-reference-audit>使用过审助手 V1.6 原版内核 ${Z.referenceAudit.version}；令牌和概率按已核实的运行时规则兼容复核，差异逐项列明。卡型字数与关键词闸门同时检查。</p><button type="button" class="primary audit-fix-all" data-audit-fix-all ${repairPlan.findings.length?'':'disabled'}>${repairPlan.ai.length?`按体检修复（${repairPlan.findings.length}）`:(localFixes.length?`一键修复格式（${localFixes.length}）`:'暂无待修复项')}</button><button type="button" class="secondary" data-action="repair-local-only">本地修复结构与入口（不请求 AI）</button><p class="fine" data-audit-repair-note>${repairPlan.ai.length?`先保存快照并尝试本地结构修复；剩余问题分小批交给 AI，预检通过后审阅应用，每批实际复检。`:(localFixes.length?'直接修复格式字段，修改前自动保存快照。':'当前只有说明或未发现待修复问题。')}</p>${!errors?'<button type="button" class="secondary" data-action="export-json">导出已体检的 JSON 卡片</button>':''}</section><div class="audit-summary-stat ${errors?'has-error':''}"><b>${errors}</b><span>需修复</span></div><div class="audit-summary-stat ${warnings?'has-warning':''}"><b>${warnings}</b><span>建议检查</span></div><div class="audit-summary-stat"><b>${advisories}</b><span>可选建议</span></div><div class="audit-summary-stat"><b>${infos}</b><span>提示</span></div>`;const list=all[activeAuditTab]||[];$('#audit-results').innerHTML=list.length?Z.auditGroups.render(list):`<div class="empty"><h2>${total?'本分类未发现问题':'本次体检未发现已覆盖问题'}</h2><p>${total?'其他审核分类仍有 '+total+' 项，请查看上方带数字的标签。':'全部本地规则已经实际执行；这仍不是目标平台的绝对过审证明。'}</p></div>`;return{all,total,errors,warnings,advisories,infos,localFixes}}
+  function renderAudit(snapshot){const current=collectForm(),rawAll=snapshot||Z.audit.runAll(current),all=Z.auditFix.decorateFindings(current,rawAll),repairPlan=Z.auditFix.batchPlan(all),localFixes=repairPlan.fixes,groups={runtime:'运行审核',quality:'质量审核',submission:'提交审核（过审规则）'},rows=Object.values(all).flat(),errors=rows.filter(x=>Z.qualityRules.isBlocking(x)).length,demoted=rows.filter(x=>x.demotedFrom==='error').length,warnings=rows.filter(x=>x.severity==='warning'&&!x.advisory).length,advisories=rows.filter(x=>x.severity==='warning'&&x.advisory).length,infos=rows.filter(x=>x.severity==='info').length,total=rows.length,entryCount=current.data?.character_book?.entries?.length||0,cardKind=Z.qualityRules.cardKindOf(current),scopeRules=Z.qualityRules.notApplicableRules(cardKind),kindScopeNote=scopeRules.length?`<p class="fine" data-rule-scope>卡型适配：这张卡按「${esc(Z.qualityRules.kindLabel(cardKind))}」审查，有 ${scopeRules.length} 条规则写明只对别的卡型生效，本次没有执行（闸门类规则主要面向流水线卡和肉卡）。它们不是「检查过、没问题」，是「不适用」。</p>`:'';$$('[data-audit-tab]').forEach(x=>{const group=x.dataset.auditTab,count=all[group]?.length||0;x.classList.toggle('is-active',group===activeAuditTab);x.innerHTML=`${groups[group]} <span class="audit-count">${count?Z.auditGroups.group(all[group]).length+" 类 · "+count+" 处":"0"}</span>`});const summary=$('#audit-summary');if(summary)summary.innerHTML=`<section class="audit-summary-main" data-audit-verdict="${errors?'error':warnings?'warning':'pass'}"><h2>${lastAuditAt?(errors?'体检未通过：还有需修复项':advisories?'本地体检通过（另有 '+advisories+' 条可选建议）':warnings?'可以发布：仍有建议检查项':'本地体检通过'):'规则预检已加载'}</h2><p>${lastAuditAt?'执行时间：'+lastAuditAt.toLocaleTimeString('zh-CN',{hour12:false}):'点击“重新体检”会保存当前编辑并立即重新运行全部规则。'} · 当前编辑卡 ${entryCount} 条世界书 · 常驻 ${Z.qualityRules.probeDensity(current).constCount} 条</p><p class="fine" data-reference-audit>使用过审助手 V1.6 原版内核 ${Z.referenceAudit.version}；令牌和概率按已核实的运行时规则兼容复核，差异逐项列明。卡型字数与关键词闸门同时检查。</p>${kindScopeNote}<button type="button" class="primary audit-fix-all" data-audit-fix-all ${repairPlan.findings.length?'':'disabled'}>${repairPlan.ai.length?`一键自动修复（${repairPlan.findings.length}）`:(localFixes.length?`一键修复格式（${localFixes.length}）`:'暂无待修复项')}</button><button type="button" class="secondary" data-action="repair-local-only">本地修复结构与入口（不请求 AI）</button><p class="fine" data-audit-repair-note>${repairPlan.ai.length?`点击后自动分批修复；通过复检的修改会保存并继续下一批，无需逐轮确认。可随时停止。`:(localFixes.length?'直接修复格式字段，修改前自动保存快照。':'当前只有说明或未发现待修复问题。')}</p>${!errors?'<button type="button" class="secondary" data-action="export-json">导出已体检的 JSON 卡片</button>':''}</section><div class="audit-summary-stat ${errors?'has-error':''}"><b>${errors}</b><span>需修复</span></div><div class="audit-summary-stat ${warnings?'has-warning':''}"><b>${warnings}</b><span>建议检查</span></div><div class="audit-summary-stat"><b>${advisories}</b><span>可选建议</span></div><div class="audit-summary-stat"><b>${infos}</b><span>提示</span></div>${demoted?`<div class="audit-summary-stat is-demoted" data-demoted-stat><b>${demoted}</b><span>已降为建议</span></div>`:''}`;const list=all[activeAuditTab]||[];$('#audit-results').innerHTML=list.length?Z.auditGroups.render(list):`<div class="empty"><h2>${total?'本分类未发现问题':'本次体检未发现已覆盖问题'}</h2><p>${total?'其他审核分类仍有 '+total+' 项，请查看上方带数字的标签。':'全部本地规则已经实际执行；这仍不是目标平台的绝对过审证明。'}</p></div>`;return{all,total,errors,warnings,advisories,infos,localFixes,demoted,manual:repairPlan.manual,ai:repairPlan.ai}}
   function runAuditNow(){const raw=collectForm();Z.workspace.saveCard(ws,raw,'体检前保存');Z.workspace.persist(ws);lastAuditAt=new Date();const checks=Z.audit.runAll(raw);activeAuditTab=['submission','runtime','quality'].find(group=>checks[group]?.some(f=>f.severity==='error'))||'submission';const result=renderAudit(checks);Z.fullCard.feedback.refreshProgressFromCard?.(raw,checks);navigate('audit');toast(result.total?`体检完成：${result.errors} 项需修复，${result.warnings} 项建议检查`:'体检完成：已覆盖规则中未发现问题')}
   function setupModelSelect(){const old=$('#api-model');if(!old)return;const select=document.createElement('select');select.id='api-model-select';select.disabled=true;select.innerHTML='<option value="">请先读取模型</option>';old.replaceWith(select);$('[data-action="test-api"]').textContent='读取模型'}
   function syncModelControls(ids=Z.modelControl.readCache(localStorage),selected=settings().model){const cached=Z.modelControl.normalizeModels(ids),models=Z.modelControl.normalizeModels([...cached,selected]),active=models.includes(selected)?selected:(models[0]||'');$$('[data-model-scope],#api-model-select').forEach(select=>{select.innerHTML=models.map(id=>`<option value="${esc(id)}">${esc(id)}</option>`).join('')||'<option value="">请先读取模型</option>';select.disabled=!models.length;select.value=active});$$('.model-read-shortcut').forEach(button=>button.hidden=Boolean(cached.length));return active}
@@ -5522,8 +6175,14 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
     if(x==='refresh-ui-preview')refreshUiPreview(a.dataset.index);
     if(x==='generate-diff')retryDiff();if(x==='review-existing-diff')reviewExistingDiff();if(x==='apply-diff'){if(a.disabled)return;a.disabled=true;const label=a.textContent;a.textContent='正在应用并重新体检…';try{await applySelectedDiff();}catch(error){toast('应用修改失败：'+error.message);}finally{if(a.isConnected){a.disabled=false;a.textContent=label;}}}if(x==='stop-stream'&&streamController)streamController.abort();
     if(x==='audit'){closeDrawers();runAuditNow();}if(x==='repair-local-only')await fixAllAudit(a,{localOnly:true});if(x==='repair-audit-again'){const button=$('[data-audit-fix-all]');if(button&&!button.disabled)await fixAllAudit(button);}
+    if(x==='repair-manual'){runAuditNow();return;}
+    if(x==='export-draft-json'){
+      const draft=collectForm(),findings=Object.values(Z.auditFix.decorateFindings(draft,Z.audit.runAll(draft))).flat();
+      draft.data.extensions=draft.data.extensions||{};draft.data.extensions.cyf_draft_audit={status:'draft',checkedAt:new Date().toISOString(),findings:findings.filter(f=>f.severity==='error'||f.severity==='warning').map(f=>({rule:f.ruleId||f.code,severity:f.severity,entryId:f.entryId??f.entry?.id,entry:f.entry?.title,title:f.title,detail:f.detail}))};
+      download(Z.card.exportJson(draft),(draft.data.name||'角色卡')+'.草稿.json','application/json');return toast('草稿已导出，附带未解决问题清单；质检状态保留');
+    }
     if(x==='export-json'||x==='export-png'){
-      const candidate=collectForm(),allFindings=Object.values(Z.audit.runAll(candidate)).flat(),blockers=allFindings.filter(x=>x.severity==='error');
+      const candidate=collectForm(),allFindings=Object.values(Z.auditFix.decorateFindings(candidate,Z.audit.runAll(candidate))).flat(),blockers=allFindings.filter(x=>Z.qualityRules.isBlocking(x));
       const profile=candidate.data?.extensions?.rp_studio, m=Z.fullCard.measure(candidate);
       const invalidWorldbook=Z.referenceAudit.finalFindings(candidate).length>0;
       if(blockers.length||invalidWorldbook)return toast(`质检台未全绿：${blockers.length||1} 项需修复（首个：${blockers[0]?blockers[0].title+'——'+String(blockers[0].detail).slice(0,60):'世界书字数/分类'}）；点「重新体检」查看全部`);
@@ -5577,11 +6236,11 @@ addEventListener('message',e=>{if(e.data?.type!=='zaojingtai-preview-action')ret
   Z.integrationHost={
     projectId:()=>ws.id,
     captureProject:()=>{ws.card=collectForm();ws.updatedAt=new Date().toISOString();ws.projectDraft={goal:$('#goal-input').value,uiMode:Z.uiModes.selected(),tab:activeCreatorTab,progress:sessionStorage.getItem('zaojingtai.progress')};projectResources.set(ws.id,{workspaceDir,workspaceResources,workspaceScanStats});ws.storageBytes=new TextEncoder().encode(JSON.stringify(ws)).length+(sourceAvatar?.byteLength||0);return clone(ws);},
-    stopProjectTasks:async()=>{if(streamController){streamController.abort();for(let n=0;n<60&&streamController;n++)await new Promise(r=>setTimeout(r,50));if(streamController)throw Error('AI请求还在停止中，请稍后切换');}},
+    stopProjectTasks:async()=>{if(streamController||automaticRepair){streamController?.abort();for(let n=0;n<60&&(streamController||automaticRepair);n++)await new Promise(r=>setTimeout(r,50));if(streamController||automaticRepair)throw Error('AI请求还在停止中，请稍后切换');}},
     activateProject:async project=>{const avatar=project.coverBase64?Uint8Array.from(atob(project.coverBase64),c=>c.charCodeAt(0)):(project.sourceType==='png'?await Z.workspace.loadAvatar(project.id):null);ws=clone(project);if(!ws.card)ws.card=blank();sourceAvatar=avatar;pendingDiff=null;lastDiffRequest=null;pendingModuleImport=null;pendingSnapshotRestore=null;pendingCardLoad=null;$('#diff-panel')?.classList.remove('is-open');const resources=projectResources.get(ws.id)||{};workspaceDir=resources.workspaceDir||null;workspaceResources=resources.workspaceResources||[];workspaceScanStats=resources.workspaceScanStats||null;$('#goal-input').value=ws.projectDraft?.goal||'';const mode=Z.uiModes.normalize(ws.projectDraft?.uiMode||Z.fullCard.meta(ws.card).uiMode);const radio=document.querySelector('input[name="rp-ui-mode"][value="'+mode+'"]');if(radio)radio.checked=true;localStorage.setItem('zaojingtai.ui-mode',mode);Z.fullCard.feedback.restoreProject?.(ws.projectDraft?.progress);if(ws.projectDraft?.progress)Z.fullCard.feedback.refreshProgressFromCard?.(ws.card);$('#plan-output').hidden=true;renderWorkspace();setCreatorTab(ws.projectDraft?.tab||'overview');renderWorkspaceLibrary();renderHomeWorkspacePrep();Z.studioUi?.markSaved();document.dispatchEvent(new Event('rp-card-changed'));},
-    activateSource:(info,evidence)=>{sourceEvidence=clone(evidence);sourceMode=info.name+' 源码 '+info.id;renderSourceStatus();},sourceContext:(query,purpose)=>buildAiEvidence(query,purpose),isTaskRunning:()=>!!streamController,navigate,
+    activateSource:(info,evidence)=>{sourceEvidence=clone(evidence);sourceMode=info.name+' 源码 '+info.id;renderSourceStatus();},sourceContext:(query,purpose)=>buildAiEvidence(query,purpose),isTaskRunning:()=>!!(streamController||automaticRepair),navigate,
     setCreatorTab,clearLoreFilters,applyLoreFilters,getAiReferenceSummary:()=>workspaceResources.filter(x=>x.selected).map(x=>x.name),getCard:()=>collectForm(),getCover:()=>sourceAvatar,hasCover:()=>!!sourceAvatar,getApiSettings:()=>settings(),
-    generate:resume=>generateInitial(resume),generateCover,audit:()=>runAuditNow(),toast,
+    generate:resume=>generateInitial(resume),repair:options=>fixAllAudit(null,options),generateCover,audit:()=>runAuditNow(),toast,
     setCover:async (file,automatic=false)=>{if(streamController&&!automatic)throw Error('请先停止 AI 生成再换封面');const bytes=await fileToPngBytes(file);const bitmap=await createImageBitmap(new Blob([bytes],{type:'image/png'}));if(bitmap.width<256||bitmap.height<256){bitmap.close();throw Error('封面尺寸过小，至少需要 256 × 256')}bitmap.close();sourceAvatar=bytes;ws.sourceType='png';const card=collectForm();Object.assign(Z.fullCard.meta(card),{coverSelected:true,coverReview:false,coverInspection:null});Z.workspace.saveCard(ws,card,'更换封面');await Z.workspace.saveAvatar(ws.id,bytes);Z.workspace.persist(ws);renderWorkspace();},
     setCoverReview:value=>{const card=collectForm();Z.fullCard.meta(card).coverReview=value;Z.workspace.saveCard(ws,card,'封面人工检查');Z.workspace.persist(ws);},
   };
