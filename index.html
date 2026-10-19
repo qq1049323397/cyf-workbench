@@ -261,6 +261,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   .skills-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
   .skills-summary{font-size:13px;color:var(--muted);margin:0 auto 0 0}
   .skills-list{display:grid;gap:10px}
+  .skills-group{display:grid;gap:10px}
+  .skills-group + .skills-group{margin-top:18px;padding-top:18px;border-top:1px solid var(--line)}
+  .skills-group-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:12px}
+  .skills-group-head h2{margin:0;font-size:17px;letter-spacing:.01em}
+  .skills-group-head p{margin:3px 0 0;font-size:12px;line-height:1.65;color:var(--muted)}
+  .skills-group-head>.skill-badge{margin-top:2px}
+  .skills-rows{display:grid;gap:10px}
   .skill-card{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);padding:14px 16px}
   .skill-card.is-off{opacity:.62}
   .skill-main{display:flex;gap:12px;align-items:flex-start}
@@ -281,6 +288,18 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   .skill-badge.builtin{background:#e6efe9;color:var(--verified)}
   .skill-badge.custom{background:#efedf9;color:var(--indigo)}
   .skill-size{font-size:11px;color:var(--muted)}
+  .skill-badge.special{background:#f4ecdc;color:#7a5a1f}
+  .skill-card-locked{border-style:dashed;background:#fbfaf5}
+  .skill-card-locked .skill-main{gap:0}
+  .skills-modules{border:1px solid var(--line);border-left:3px solid #d7d0bd;border-radius:10px;background:#f7f6f0;padding:10px 14px}
+  .skills-modules>summary{cursor:pointer;font-size:13px;font-weight:700}
+  .skills-modules>summary .fine{font-weight:400;margin-left:6px}
+  .skill-module-list{display:grid;gap:8px;margin-top:10px;margin-left:6px;padding-left:12px;border-left:2px solid var(--line)}
+  .skill-module{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#fff}
+  .skill-module>summary{cursor:pointer;font-size:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .skill-module p{margin:6px 0;font-size:12px;line-height:1.65;color:var(--muted)}
+  .skill-module pre{max-height:260px;overflow:auto;margin:8px 0 0;padding:10px;border-radius:8px;background:#f3f2ec;font:12px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+  .field-hint{flex-basis:100%;font-size:12px;line-height:1.55;color:var(--muted)}
   .skill-actions{display:flex;gap:4px;flex:none;flex-wrap:wrap;justify-content:flex-end}
   .skill-actions .text-button{min-height:32px;padding:4px 8px;font-size:12px}
   .skill-actions .danger{color:var(--danger)}
@@ -323,7 +342,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   <div class="section-head">
     <div>
       <h1>技能</h1>
-      <p>默认全部开启。开关只改下一次生成使用的提示词，不改工具的硬校验。</p>
+      <p>按卡型分组。常规 9 个可逐个开关；肉卡与流水线专用方法论固定注入。开关只改下一次生成使用的提示词，不改工具的硬校验。</p>
     </div>
     <div class="skills-toolbar" style="margin:0">
       <span id="skills-status" class="fine" role="status"></span>
@@ -333,7 +352,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   </div>
   <div class="skills-toolbar">
     <p id="skills-summary" class="skills-summary" role="status"></p>
-    <span id="skills-count-note" class="fine">内置 9 个 + 自建 0 个</span>
+    <span id="skills-count-note" class="fine">内置 9 个 + 专用 2 个 + 自建 0 个</span>
   </div>
   <p id="skills-kind-note" class="fine" hidden></p>
   <div id="skills-list" class="skills-list"></div>
@@ -342,7 +361,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     <p><strong>收：</strong>Markdown 纯文本；可选 frontmatter 的 <code>name</code> / <code>description</code>；一条规则一段，500–3000 字最好；写成方法论、硬约束或检查清单都行。</p>
     <p><strong>不收：</strong>JS / HTML / CSS 执行、网络请求、读写文件、新按钮或新接口、外部文件与图片引用，以及改掉硬校验。</p>
     <p><strong>阶段：</strong>全量生成 / 世界书批次 / UI 设计 / 正则修卡。不选阶段就不会被注入。</p>
-    <p><strong>卡型：</strong>常规剧情卡 / 肉卡 / 流水线卡。内置 9 个只作用于常规剧情卡。</p>
+    <p><strong>卡型：</strong>常规剧情卡 / 肉卡 / 流水线卡。常规 9 个只作用于常规卡；肉卡和流水线卡各有固定注入的专用方法论。自建技能保存时勾选作用于哪些卡型，不勾的卡型不会注入。</p>
     <p><strong>硬校验：</strong>2 万字有效世界书、关键词闸、UI 本地校验、发布检查都不受开关影响。</p>
     <pre id="skill-template">---
 name: my-skill
@@ -368,17 +387,19 @@ description: 一句话说明这条技能约束什么
       <label>名称<input id="skill-name" placeholder="我的规则"></label>
       <label class="wide">一句话说明<input id="skill-description" placeholder="它约束模型写什么"></label>
       <fieldset class="wide">
-        <legend>注入阶段</legend>
+        <legend>作用于哪些卡型</legend>
+        <label><input type="checkbox" name="skill-kind" value="regular" checked> 常规剧情卡</label>
+        <label><input type="checkbox" name="skill-kind" value="meat" checked> 肉卡</label>
+        <label><input type="checkbox" name="skill-kind" value="pipeline" checked> 流水线卡</label>
+        <span class="field-hint">至少选一个。只对勾选的卡型注入；不勾肉卡/流水线，就不会进它们的生成提示词。</span>
+      </fieldset>
+      <fieldset class="wide">
+        <legend>作用于哪些阶段</legend>
         <label><input type="checkbox" name="skill-stage" value="all" checked> 全量生成</label>
         <label><input type="checkbox" name="skill-stage" value="lore"> 世界书批次</label>
         <label><input type="checkbox" name="skill-stage" value="ui"> UI 设计</label>
         <label><input type="checkbox" name="skill-stage" value="regex"> 正则修卡</label>
-      </fieldset>
-      <fieldset class="wide">
-        <legend>适用卡型</legend>
-        <label><input type="checkbox" name="skill-kind" value="regular" checked> 常规剧情卡</label>
-        <label><input type="checkbox" name="skill-kind" value="meat" checked> 肉卡</label>
-        <label><input type="checkbox" name="skill-kind" value="pipeline" checked> 流水线卡</label>
+        <span class="field-hint">选「全量生成」会在所有阶段注入；只勾世界书/UI/正则，则只在这些阶段出现。</span>
       </fieldset>
       <label class="wide">正文<textarea id="skill-body" rows="8" placeholder="一条规则一段。写清楚：必须做什么、禁止什么、检查什么。"></textarea></label>
       <label class="wide">从文件读入（.md / .json）<input type="file" id="skill-file" accept=".md,.markdown,.json,text/markdown,application/json"></label>
@@ -2367,11 +2388,11 @@ return {titleFindings,INSERTION_POSITIONS,entryPosition,insertionRoute,normalize
      改版本时只改这一处，然后跑 tools/package.sh 重新打包。
      格式必须严格是 x.y.z——tools/asserts/version.js 用 /^\d+\.\d+\.\d+$/ 校验，
      所以构建戳不能拼在这里，只能放下面的 WORKBENCH_BUILD。 */
-  const WORKBENCH_VERSION='1.5.0';
+  const WORKBENCH_VERSION='1.5.1';
   /* 构建戳：由 tools/sync-site.sh 在同步时自动改写成「日期.sha」，手改这里没有意义。
      它存在的理由就是版本号看不出来的那件事——线上跑的到底是哪一次构建。 */
   const WORKBENCH_BUILD='2026.10.19.1efecda';
-  const WORKBENCH_RELEASE={"title":"技能开关与自建技能","notes":["内置 9 个 SKILLS 默认全开，左侧新增「技能」页，可逐个开关；开关只影响下一次生成使用的提示词。","支持自建技能：填写或导入 Markdown/JSON，先过静态质检再保存；保存后立即出现在列表，和内置技能一样开关。","适配说明写清楚收什么、不收什么：纯文本提示词，不执行代码、不发请求、不改 2 万字、关键词、UI 与发布检查。"]};
+  const WORKBENCH_RELEASE={"title":"技能分区与卡型选择","notes":["技能页按卡型分成四组：常规剧情卡 9 个可开关内置技能、肉卡专用方法论与 15 个写法模块、流水线专用方法论、自建技能。","肉卡/流水线方法论固定注入，不再混在通用列表里；15 个写法模块默认折叠，展开可看说明与全文。","自建技能保存时可直接勾选作用于哪些卡型；只改展示与说明，9 个通用技能仍只作用于常规卡，生成逻辑不变。"]};
   /* 注意：工厂函数里没有 root 这个变量（root 只是外层 IIFE 的参数），必须用 globalThis。 */
   try{globalThis.Zaojing=globalThis.Zaojing||{};globalThis.Zaojing.version=WORKBENCH_VERSION;globalThis.Zaojing.build=WORKBENCH_BUILD;globalThis.Zaojing.releaseNotes=WORKBENCH_RELEASE;}catch(_){ }
   try{
@@ -3846,13 +3867,52 @@ globalThis.RPStudioBundle={"version":"0.4.0","policy":{"version":"0.4.0","id":"c
       +'</article>';
   }
 
+  function specialRow(spec){
+    const body=String(spec.body||'');
+    const tags=(spec.tags||[]).map(x=>badge(x)).join('');
+    return '<article class="skill-card skill-card-locked" data-special-id="'+esc(spec.id)+'">'
+      +'<div class="skill-main">'
+      +'<div class="skill-copy">'
+      +'<div class="skill-title"><strong>'+esc(spec.name)+'</strong><code class="skill-id">'+esc(spec.id)+'</code>'+badge('专用','special')+'</div>'
+      +'<p class="skill-desc">'+esc(spec.description||'')+'</p>'
+      +'<div class="skill-meta">'+tags+'<span class="skill-size">'+body.length+' 字</span></div>'
+      +'</div>'
+      +'<div class="skill-actions"><span class="skill-badge special">固定注入</span></div>'
+      +'</div>'
+      +'<details class="skill-detail"><summary>查看全文</summary><pre>'+esc(body)+'</pre></details>'
+      +'</article>';
+  }
+
+  function meatModuleList(){
+    const meat=globalThis.RPStudioMeatSkill||{};
+    const modules=Array.isArray(meat.modules)?meat.modules:[];
+    if(!modules.length)return '';
+    const slotLabel={profile:'人物档案',play:'玩法',both:'通用'};
+    return '<details class="skills-modules"><summary>写法模块库<span class="fine">'+modules.length+' 个，按蓝图勾选后注入</span></summary>'
+      +'<div class="skill-module-list">'
+      +modules.map(m=>'<details class="skill-module"><summary><strong>'+esc(m.id)+'</strong>'
+        +badge(slotLabel[m.slot]||m.slot||'通用')
+        +(Array.isArray(m.tags)&&m.tags.length?badge(m.tags.slice(0,3).join(' / ')):'')
+        +'<span class="skill-size">'+String(m.body||'').length+' 字</span></summary>'
+        +'<p>'+esc(m.summary||'')+'</p>'
+        +'<pre>'+esc(m.body||'')+'</pre></details>').join('')
+      +'</div></details>';
+  }
+
+  function section(key,title,description,body,count){
+    return '<section class="skills-group" data-skill-group="'+key+'">'
+      +'<div class="skills-group-head"><div><h2>'+esc(title)+'</h2><p>'+esc(description)+'</p></div>'+badge(count)+'</div>'
+      +'<div class="skills-rows">'+body+'</div></section>';
+  }
+
   function kindNote(){
     let kind='regular';
     try{ kind=localStorage.getItem('zaojingtai.card-kind')||'regular'; }catch(_){}
     const el=$('#skills-kind-note');
     if(!el)return;
     if(kind==='meat'||kind==='pipeline'){
-      el.textContent='当前卡型是'+(Z.skills.KIND_LABELS[kind]||kind)+'：内置 9 个只作用于常规剧情卡，自建技能按你勾选的卡型注入。';
+      const label=Z.skills.KIND_LABELS[kind]||kind;
+      el.textContent='当前卡型是'+label+'：上方「常规剧情卡」的 9 个开关不影响本卡型；本卡型固定使用「'+label+'」专用方法论，自建技能按你勾选的卡型追加。';
       el.hidden=false;
     }else{
       el.hidden=true;
@@ -3864,12 +3924,29 @@ globalThis.RPStudioBundle={"version":"0.4.0","policy":{"version":"0.4.0","id":"c
     const host=$('#skills-list');
     if(!host)return;
     const all=Z.skills.list();
-    const on=all.filter(x=>x.enabled).length;
+    const builtins=all.filter(x=>x.builtin);
+    const customs=all.filter(x=>!x.builtin);
+    const regularOn=builtins.filter(x=>x.enabled).length;
+    const meat=(globalThis.RPStudioMeatSkill||{});
+    const meatBody=String(meat.methodology||'');
+    const meatModules=Array.isArray(meat.modules)?meat.modules:[];
+    const pipe=(globalThis.RPStudioPipelineSkill||{});
+    const pipeBody=String(pipe.methodology||'');
     const sum=$('#skills-summary');
-    if(sum)sum.textContent='共 '+all.length+' 个技能 · 已启用 '+on+' 个';
+    if(sum)sum.textContent='常规 '+builtins.length+' 个（已启用 '+regularOn+'）· 肉卡专用 1 个 · 流水线专用 1 个 · 自建 '+customs.length+' 个';
     const note=$('#skills-count-note');
-    if(note)note.textContent='内置 '+Z.skills.BUILTIN_IDS.length+' 个 + 自建 '+(all.length-Z.skills.BUILTIN_IDS.length)+' 个';
-    host.innerHTML=all.map(row).join('')||'<p class="fine">还没有技能。</p>';
+    if(note)note.textContent='内置 '+Z.skills.BUILTIN_IDS.length+' 个 + 专用 2 个 + 自建 '+customs.length+' 个';
+    const regular=section('regular','常规剧情卡','9 个内置技能，默认全开；开关只影响常规剧情卡的提示词。',builtins.map(row).join(''),builtins.length+' 个');
+    const meatBodyHtml=meatBody
+      ? specialRow({id:'meat.methodology',name:'肉卡方法论',description:'三条硬钩子、人物开关、场景与推进；生成肉卡时固定注入。',tags:['肉卡','固定'],body:meatBody})+meatModuleList()
+      : '<p class="fine">肉卡方法论未加载。</p>';
+    const meatGroup=section('meat','肉卡专用','生成肉卡时固定注入；15 个写法模块按蓝图选用，不在通用开关里。',meatBodyHtml,'1 + '+meatModules.length);
+    const pipeGroup=section('pipeline','流水线专用','生成流水线卡时固定注入；协议、行为链与三件套正则都在这份方法论里。',pipeBody
+      ? specialRow({id:'pipeline.methodology',name:'流水线肉卡方法论',description:'协议六件套、行为链、关键词三层与固定三件套正则；生成流水线卡时固定注入。',tags:['流水线','固定'],body:pipeBody})
+      : '<p class="fine">流水线方法论未加载。</p>','1 个');
+    const customBody=customs.length?customs.map(row).join(''):'<p class="fine">还没有自建技能。点右上角「添加技能」，在弹窗里勾选作用于哪些卡型。</p>';
+    const customGroup=section('custom','自建技能','保存时勾选作用于哪些卡型；卡片上会标出阶段与卡型，可随时开关。',customBody,customs.length+' 个');
+    host.innerHTML=regular+meatGroup+pipeGroup+customGroup;
     kindNote();
   }
 
@@ -4621,6 +4698,8 @@ setTimeout(()=>Z.integratedProtection.refresh(),0);
 - 禁止每张卡重写协议模板——协议是模具，只有行为链和话术是每卡不同的产品。
 - 禁止删除或改写 scenario 署名句。
 `;
+  /* 技能页要只读展示这份方法论；生成路径仍只读同一个常量。 */
+  globalThis.RPStudioPipelineSkill={version:'0.2.0',methodology:PIPELINE_SKILL};
   /* 生成期目标：比共享库 CONST_BUDGETS 更紧，是「写的时候尽量别超」的自我要求；
      校验期（底座/过审内核/闸6）读的是 CONST_BUDGETS，那才是唯一决定挡不挡导出的数。
      这里只保留「目标更严」这件事，改校验线不要去改这份 policy。 */
