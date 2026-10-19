@@ -250,13 +250,148 @@ FIRST VIEWPORT: 左侧深色导航固定，右侧用大标题、创作输入和�
 FORM: 高级创作指挥台；已通过交互预览确认。
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
 --><a class="skip-link" href="#main-content">跳到主要内容</a><div id="app" class="app-shell">
-<aside class="sidebar" aria-label="主导航"><a class="brand" href="#home" data-nav="home"><span class="brand-mark">境</span><span><strong>CYF综合工作台</strong><small>AI 角色卡工程台</small></span></a><nav class="nav-list"><button class="nav-item is-active" data-nav="home">创作首页</button><button class="nav-item" data-nav="generation">制卡进度</button><button class="nav-item" data-nav="workspace">角色卡工程</button><button class="nav-item" data-nav="audit">体检与修复</button><button class="nav-item" data-nav="publish">发布与保护</button><button class="nav-item" data-nav="settings">源码与工作区</button></nav><div class="sidebar-note"><strong>本地工程模式</strong><span>卡片、密钥与工作区索引保存在本机；AI 只接收当前任务需要的内容。</span></div></aside>
+<aside class="sidebar" aria-label="主导航"><a class="brand" href="#home" data-nav="home"><span class="brand-mark">境</span><span><strong>CYF综合工作台</strong><small>AI 角色卡工程台</small></span></a><nav class="nav-list"><button class="nav-item is-active" data-nav="home">创作首页</button><button class="nav-item" data-nav="generation">制卡进度</button><button class="nav-item" data-nav="workspace">角色卡工程</button><button class="nav-item" data-nav="audit">体检与修复</button><button class="nav-item" data-nav="skills">技能</button><button class="nav-item" data-nav="publish">发布与保护</button><button class="nav-item" data-nav="settings">源码与工作区</button></nav><div class="sidebar-note"><strong>本地工程模式</strong><span>卡片、密钥与工作区索引保存在本机；AI 只接收当前任务需要的内容。</span></div></aside>
 <div class="app-main"><header class="topbar"><button class="mobile-menu" type="button">菜单</button><div class="status-strip"><span class="status-chip" id="api-status">API 未连接</span><span class="status-chip" id="baseline-status">RP-Hub 内置基线</span><span class="status-chip" id="workspace-status">未建工作区</span><span class="status-chip" id="version-status" title="工作台版本">v1.2.5</span><span class="status-chip" id="version-build" title="构建戳：日期.sha，用来判断线上是不是最新版">dev</span></div></header><main id="main-content" tabindex="-1">
 <section class="view is-active" data-view="home"><div class="hero"><div><h1>把一张设想，<br>铸成可运行的世界。</h1><p>从一句设想开始。CYF综合工作台会优先参照 RP-Hub 源码与工作区素材，生成可编辑、可体检、可直接导出的角色卡工程。</p><div class="hero-actions"><button class="primary" data-action="new">新建角色卡工程</button><button class="secondary" data-action="import">导入已有卡片</button><input id="file-input" type="file" accept=".json,.png,application/json,image/png" hidden></div></div><aside class="evidence-rail"><span>每次生成都有依据</span><ol><li><b>01</b>理解目标</li><li><b>02</b>检索成熟做法</li><li><b>03</b>生成可撤销补丁</li><li><b>04</b>运行三类审核</li></ol></aside></div><div class="prompt-panel"><label for="goal-input">描述你想进入的角色与世界</label><textarea id="goal-input" rows="4" placeholder="例如：做一张古风悬疑卡，开场要有强钩子；正文 UI 要稳定，不依赖脚本。"></textarea><div class="prompt-foot"><span id="goal-hint">不用先懂字段、正则或变量桥；先说清楚你想玩的体验。</span><button class="primary" data-action="plan">生成制作建议</button></div></div><div class="home-grid"><article><h2>源码优先</h2><p id="baseline-copy">字段、运行时、UI 和导出遇到疑问时，AI 先检索 RP-Hub 源码再回答。</p></article><article><h2>工程资源</h2><p>工作区中的参考卡、图片、代码与设定资料，都可以被读取、预览并用于当前工程。</p></article><article><h2>质量控制</h2><p>运行、体验与提交规则分层检查；问题可定位、可修复，也不会把本地检查冒充绝对过审。</p></article></div></section>
 <section class="view" data-view="generation"><div class="section-head"><div><h1>制卡进度</h1><p>当前阶段、实时返回和检查点操作都在这里。离开此页面也能从左侧回来继续。</p></div><button type="button" class="secondary" data-nav="home">返回创作首页</button></div><div data-generation-progress></div><div id="plan-output" class="plan-output" hidden></div><div class="empty" data-generation-empty>还没有制卡任务。返回创作首页，填写题材后点击生成即可开始。</div></section>
 <section class="view" data-view="workspace"><div class="section-head"><div><h1>卡片工作区</h1><p>结构化编辑，不用在整份 JSON 里找字段。</p></div><div><button class="secondary" data-action="undo">撤销上次修改</button><button class="primary" data-action="save">保存到浏览器</button></div></div><div class="editor-layout"><form id="card-form" class="editor"><label>角色名<input name="name" placeholder="角色名"></label><label>一句话定位<input name="description" placeholder="身份、核心矛盾与体验承诺"></label><label>人物设定<textarea name="personality" rows="7" placeholder="性格、动机、边界、说话方式"></textarea></label><label>场景设定<textarea name="scenario" rows="6" placeholder="当前世界、关系与冲突"></textarea></label><label>开场白<textarea name="first_mes" rows="12" placeholder="支持文本与宿主前端允许的 HTML/CSS"></textarea></label><label>示例对话<textarea name="mes_example" rows="7" placeholder="用几轮对话固定语气与行为边界"></textarea></label></form><aside class="inspector"><h2>工程清单</h2><div id="inventory"></div><h2>世界书</h2><div id="lore-summary"></div><button class="secondary wide" data-action="audit">按过审规则体检</button></aside></div></section>
 <section class="view" data-view="audit"><div class="section-head"><div><h1>质量控制台</h1><p>运行、体验与提交规则并行检查；每个问题都指向具体字段与修复动作。</p></div><button class="primary" data-action="audit">重新体检</button></div><div id="audit-summary" class="audit-summary" aria-live="polite"></div><div class="audit-tabs"><button class="is-active" data-audit-tab="runtime">运行审核</button><button data-audit-tab="quality">质量审核</button><button data-audit-tab="submission">提交审核（过审规则）</button></div><div id="audit-results"></div></section>
 <section class="view" data-view="publish"><div class="section-head"><div><h1>发布与保护</h1><p>导出标准 JSON/PNG；保护是可追溯的软锁，不承诺不可破解。</p></div></div><div class="publish-grid"><section><h2>导出卡片文件</h2><p>普通导出使用标准角色卡格式；加入防盗后，PNG 使用 1.6 的 RP-Hub 兼容软锁并写入封面水印。</p><div class="stack"><button class="primary" data-action="export-json">导出 JSON（草稿可用）</button><button class="secondary" data-action="export-png">导出 PNG</button></div></section><section><h2>署名与溯源</h2><label>作者署名<input id="author-input" placeholder="你的名字或工作室"></label><p class="fine">写入作者、时间和声明，用于辨识与溯源。技术上仍可被移除。</p><button class="secondary" data-action="sign">写入署名</button> <button class="primary" data-action="protect-card">加入防盗</button><label style="margin-top:16px">防盗码（留空自动生成）<input id="rp-protection-code" placeholder="自动生成，或填写 6–12 位字母数字"></label><p id="rp-protection-status" class="fine" role="status">尚未加入防盗</p><p class="fine">直接为当前卡加入 1.6 防盗，导出 PNG 时写入封面水印与 RP-Hub 兼容软锁。作者注释只保留 TAG。</p></section></div></section>
+<style id="skills-panel-style">
+  .skills-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+  .skills-summary{font-size:13px;color:var(--muted);margin:0 auto 0 0}
+  .skills-list{display:grid;gap:10px}
+  .skill-card{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);padding:14px 16px}
+  .skill-card.is-off{opacity:.62}
+  .skill-main{display:flex;gap:12px;align-items:flex-start}
+  .skill-switch{position:relative;display:inline-flex;width:42px;height:24px;flex:none;margin-top:2px;cursor:pointer}
+  .skill-switch input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
+  .skill-switch span{position:absolute;inset:0;border-radius:999px;background:#cbc9c0;transition:background .18s}
+  .skill-switch span::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003;transition:transform .18s}
+  .skill-switch input:checked + span{background:var(--verified)}
+  .skill-switch input:checked + span::after{transform:translateX(18px)}
+  .skill-switch input:focus-visible + span{outline:3px solid rgba(92,87,184,.35);outline-offset:2px}
+  .skill-copy{min-width:0;flex:1}
+  .skill-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .skill-title strong{font-size:15px}
+  .skill-id{font:11px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--muted);background:#f0efe8;border-radius:5px;padding:1px 5px}
+  .skill-desc{margin:4px 0 8px;font-size:13px;line-height:1.7;color:var(--muted)}
+  .skill-meta{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .skill-badge{display:inline-flex;align-items:center;min-height:20px;padding:1px 8px;border-radius:999px;background:#ecebe4;color:#5d6158;font-size:11px;font-weight:700}
+  .skill-badge.builtin{background:#e6efe9;color:var(--verified)}
+  .skill-badge.custom{background:#efedf9;color:var(--indigo)}
+  .skill-size{font-size:11px;color:var(--muted)}
+  .skill-actions{display:flex;gap:4px;flex:none;flex-wrap:wrap;justify-content:flex-end}
+  .skill-actions .text-button{min-height:32px;padding:4px 8px;font-size:12px}
+  .skill-actions .danger{color:var(--danger)}
+  .skill-detail{margin-top:10px;border-top:1px dashed var(--line);padding-top:8px}
+  .skill-detail summary{cursor:pointer;font-size:12px;color:var(--muted)}
+  .skill-detail pre{max-height:320px;overflow:auto;margin:8px 0 0;padding:12px;border-radius:10px;background:#f3f2ec;font:12px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+  .skills-spec{margin-top:16px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);padding:14px 16px}
+  .skills-spec summary{cursor:pointer;font-weight:700}
+  .skills-spec p,.skills-spec li{font-size:13px;line-height:1.75;color:var(--muted)}
+  .skills-spec pre{max-height:260px;overflow:auto;margin:8px 0 12px;padding:12px;border-radius:10px;background:#f3f2ec;font:12px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap}
+  .skills-spec code{font-size:12px}
+  .skills-dialog{width:min(760px,calc(100vw - 24px));max-height:min(90vh,900px);overflow:hidden;border:1px solid var(--line);border-radius:18px;padding:0;background:var(--surface);color:var(--ink);box-shadow:0 24px 80px #0003}
+  .skills-dialog::backdrop{background:#1d1d1a66}
+  .skills-dialog form{display:flex;flex-direction:column;gap:14px;padding:0;min-height:0;max-height:inherit}
+  .skills-dialog header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:22px 22px 0;flex:0 0 auto}
+  .skills-dialog h2{margin:0;font:600 22px STZhongsong,SimSun,serif}
+  .skills-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px 22px;overflow:auto;min-height:0;flex:1 1 auto}
+  .skills-form-grid .wide{grid-column:1/-1}
+  .skills-form-grid label{display:grid;gap:6px;font-size:13px;font-weight:700}
+  .skills-form-grid fieldset{display:flex;gap:12px;flex-wrap:wrap;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+  .skills-form-grid fieldset legend{font-size:12px;color:var(--muted);padding:0 4px}
+  .skills-form-grid fieldset label{display:inline-flex;align-items:center;gap:6px;font-weight:400}
+  .skills-dialog input[type="checkbox"]{width:14px;height:14px;min-height:0;margin:0;padding:0;flex:0 0 auto;box-sizing:border-box}
+  .skills-dialog textarea{min-height:180px;font:13px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace}
+  .skills-dialog footer{flex:0 0 auto;display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0;padding:12px 22px 18px;background:var(--surface);border-top:1px solid var(--line)}
+  .skill-check{font-size:13px;line-height:1.7;border-radius:10px;margin:0 22px;flex:0 0 auto}
+  .skill-check:empty{display:none}
+  .skill-check .skill-error{background:#f9eaea;border:1px solid #e6bcbc;color:#8b2f2f;padding:10px 12px;border-radius:10px}
+  .skill-check .skill-warn{background:#fbf1e6;border:1px solid #e8c9a8;color:#7d4a1f;padding:10px 12px;border-radius:10px;margin-top:8px}
+  .skill-check .skill-ok{background:#e8f2ec;border:1px solid #b9d8c6;color:#1f5c45;padding:10px 12px;border-radius:10px}
+  .skill-check ul{margin:6px 0 0;padding-left:20px}
+  .skill-check li{margin:2px 0}
+  @media(max-width:700px){
+    .skill-main{flex-wrap:wrap}
+    .skill-actions{width:100%;justify-content:flex-start;padding-left:54px}
+    .skills-form-grid{grid-template-columns:1fr}
+  }
+</style>
+<section class="view" data-view="skills" id="skills-view">
+  <div class="section-head">
+    <div>
+      <h1>技能</h1>
+      <p>默认全部开启。开关只改下一次生成使用的提示词，不改工具的硬校验。</p>
+    </div>
+    <div class="skills-toolbar" style="margin:0">
+      <span id="skills-status" class="fine" role="status"></span>
+      <button type="button" class="secondary" id="skills-all-on">全部开启</button>
+      <button type="button" class="primary" id="skills-add">添加技能</button>
+    </div>
+  </div>
+  <div class="skills-toolbar">
+    <p id="skills-summary" class="skills-summary" role="status"></p>
+    <span id="skills-count-note" class="fine">内置 9 个 + 自建 0 个</span>
+  </div>
+  <p id="skills-kind-note" class="fine" hidden></p>
+  <div id="skills-list" class="skills-list"></div>
+  <details class="skills-spec" open>
+    <summary>适配什么样的技能？</summary>
+    <p><strong>收：</strong>Markdown 纯文本；可选 frontmatter 的 <code>name</code> / <code>description</code>；一条规则一段，500–3000 字最好；写成方法论、硬约束或检查清单都行。</p>
+    <p><strong>不收：</strong>JS / HTML / CSS 执行、网络请求、读写文件、新按钮或新接口、外部文件与图片引用，以及改掉硬校验。</p>
+    <p><strong>阶段：</strong>全量生成 / 世界书批次 / UI 设计 / 正则修卡。不选阶段就不会被注入。</p>
+    <p><strong>卡型：</strong>常规剧情卡 / 肉卡 / 流水线卡。内置 9 个只作用于常规剧情卡。</p>
+    <p><strong>硬校验：</strong>2 万字有效世界书、关键词闸、UI 本地校验、发布检查都不受开关影响。</p>
+    <pre id="skill-template">---
+name: my-skill
+description: 一句话说明这条技能约束什么
+---
+
+# 规则
+
+- 必须：……
+- 禁止：……
+- 检查：……</pre>
+    <button type="button" class="secondary" data-copy-template>复制模板</button>
+  </details>
+</section>
+<dialog id="skills-dialog" class="skills-dialog">
+  <form id="skill-form" novalidate>
+    <header>
+      <h2 id="skill-dialog-title">添加技能</h2>
+      <button type="button" class="text-button" data-skill-close>关闭</button>
+    </header>
+    <div class="skills-form-grid">
+      <label>技能 ID<input id="skill-id" placeholder="my-skill" autocomplete="off"></label>
+      <label>名称<input id="skill-name" placeholder="我的规则"></label>
+      <label class="wide">一句话说明<input id="skill-description" placeholder="它约束模型写什么"></label>
+      <fieldset class="wide">
+        <legend>注入阶段</legend>
+        <label><input type="checkbox" name="skill-stage" value="all" checked> 全量生成</label>
+        <label><input type="checkbox" name="skill-stage" value="lore"> 世界书批次</label>
+        <label><input type="checkbox" name="skill-stage" value="ui"> UI 设计</label>
+        <label><input type="checkbox" name="skill-stage" value="regex"> 正则修卡</label>
+      </fieldset>
+      <fieldset class="wide">
+        <legend>适用卡型</legend>
+        <label><input type="checkbox" name="skill-kind" value="regular" checked> 常规剧情卡</label>
+        <label><input type="checkbox" name="skill-kind" value="meat" checked> 肉卡</label>
+        <label><input type="checkbox" name="skill-kind" value="pipeline" checked> 流水线卡</label>
+      </fieldset>
+      <label class="wide">正文<textarea id="skill-body" rows="8" placeholder="一条规则一段。写清楚：必须做什么、禁止什么、检查什么。"></textarea></label>
+      <label class="wide">从文件读入（.md / .json）<input type="file" id="skill-file" accept=".md,.markdown,.json,text/markdown,application/json"></label>
+      <label class="wide" style="display:flex;align-items:center;gap:8px;font-weight:400"><input type="checkbox" id="skill-enable" checked> 保存后立即启用</label>
+    </div>
+    <div id="skill-check" class="skill-check" role="status" aria-live="polite"></div>
+    <footer>
+      <button type="button" class="secondary" id="skill-check-btn">质检</button>
+      <button type="submit" class="primary">保存</button>
+    </footer>
+  </form>
+</dialog>
+
 <section class="view" data-view="settings"><div class="section-head"><div><h1>源码与工作区</h1><p>模型负责生成，源码负责判断如何实现，工作区负责提供已有素材。</p></div></div><div class="settings-grid"><section><h2>模型 API</h2><label>接口类型<select id="api-mode"><option value="cloud">云端接口</option><option value="local">本地 / 局域网反代</option></select></label><label>接口地址<input id="api-base" value="https://cdn.sta1n.cn/v1"></label><label><span id="api-key-label">API Key</span><input id="api-key" type="password" autocomplete="off" placeholder="sk-..."></label><label>模型<input id="api-model" placeholder="例如 gpt-4.1-mini"></label><label id="api-model-manual-label" hidden>手动填写模型名<input id="api-model-manual" placeholder="填写代理实际支持的模型名" autocomplete="off"></label><p class="fine" id="api-local-help" hidden>本地模式的 Key 可留空；代理没有 /models 时可手填模型。Chrome 142+ 可能询问本地网络访问权限，请允许。其他浏览器或策略可能阻止 HTTPS 页面访问 HTTP 局域网接口，可使用离线 HTML 或 HTTPS 代理。代理必须允许本站来源（离线为 null）的 CORS，以及 Content-Type、Authorization 和 OPTIONS 预检。</p><p class="fine" id="api-base-status" role="status"></p><p class="fine" id="api-runtime-limit" hidden>无 Key 的本地接口可用于工作台 AI 功能。内嵌 RP-Hub 的模型读取、记忆功能和配置同步仍有限制，因此该接口暂不自动同步到试玩。</p><div class="stack"><button class="primary" data-action="test-api">测试连接</button><button class="secondary" data-action="save-settings">保存设置</button></div><p class="fine">使用第三方接口前，请自行确认其隐私政策与费用。</p></section><section><h2>RP-Hub 源码优先引擎</h2><p id="source-detail">正在加载内置 RP-Hub 源码索引。</p><p id="source-index-stats" class="source-index-stats"></p><div class="stack"><button class="secondary" data-action="choose-source">选择新版源码文件夹</button><button class="text-button" data-action="reset-source">恢复内置 1.8.9 源码</button></div><p class="fine">源码是 AI 判断字段、运行时、导入导出和 BUG 的最高优先级依据。所选源码只在本机分块检索，每次仅发送与当前任务相关的片段。</p><input id="source-file" type="file" accept=".js,.html,.css,.json,.md,.txt" hidden></section></div></section>
 </main></div></div><div id="toast-root" class="toast-root" aria-live="polite"></div><!-- CYF_LENGTH_DIRECTIVE_START -->
 <script id="cyf-length-directive">
@@ -2232,11 +2367,11 @@ return {titleFindings,INSERTION_POSITIONS,entryPosition,insertionRoute,normalize
      改版本时只改这一处，然后跑 tools/package.sh 重新打包。
      格式必须严格是 x.y.z——tools/asserts/version.js 用 /^\d+\.\d+\.\d+$/ 校验，
      所以构建戳不能拼在这里，只能放下面的 WORKBENCH_BUILD。 */
-  const WORKBENCH_VERSION='1.4.2';
+  const WORKBENCH_VERSION='1.5.0';
   /* 构建戳：由 tools/sync-site.sh 在同步时自动改写成「日期.sha」，手改这里没有意义。
      它存在的理由就是版本号看不出来的那件事——线上跑的到底是哪一次构建。 */
-  const WORKBENCH_BUILD='2026.10.16.fbdaf7f';
-  const WORKBENCH_RELEASE={"title":"手机工作区扫描与指定字数达标","notes":["工作区新增文件夹选择与多文件选择入口，手机可导入角色卡、图片和资料；与桌面共用分类和素材库，支持触控点名参考、扫描进度及只读保存说明。","指令中的世界书、开场白与单条字数要求会显示并参与生成和质检，开场白支持分段续写，未达标拦截正式导出；肉卡与流水线卡明确要求正文少于 80000 字时，在调用模型前终止生成。"]};
+  const WORKBENCH_BUILD='2026.10.19.1efecda';
+  const WORKBENCH_RELEASE={"title":"技能开关与自建技能","notes":["内置 9 个 SKILLS 默认全开，左侧新增「技能」页，可逐个开关；开关只影响下一次生成使用的提示词。","支持自建技能：填写或导入 Markdown/JSON，先过静态质检再保存；保存后立即出现在列表，和内置技能一样开关。","适配说明写清楚收什么、不收什么：纯文本提示词，不执行代码、不发请求、不改 2 万字、关键词、UI 与发布检查。"]};
   /* 注意：工厂函数里没有 root 这个变量（root 只是外层 IIFE 的参数），必须用 globalThis。 */
   try{globalThis.Zaojing=globalThis.Zaojing||{};globalThis.Zaojing.version=WORKBENCH_VERSION;globalThis.Zaojing.build=WORKBENCH_BUILD;globalThis.Zaojing.releaseNotes=WORKBENCH_RELEASE;}catch(_){ }
   try{
@@ -3418,6 +3553,528 @@ globalThis.Zaojing=globalThis.Zaojing||{};globalThis.Zaojing.techniqueData=[{"id
 
 
 globalThis.RPStudioBundle={"version":"0.4.0","policy":{"version":"0.4.0","id":"chize-full-card","source":"用户于2026-10-11反馈封面、点击、容器和世界书体量问题；适用于本项目后续自动生成的完整角色卡","minimumSubstantiveWorldbookChars":20000,"referenceToolMinimumChars":15000,"countUnit":"JavaScript UTF-16 content.length，与附件审查工具一致","excludeFromSubstantive":["disabled entries","style/output/UI/variable-support entries","HTML/CSS/JS code blocks","duplicate entry content","opening","description","example dialogue"],"cover":{"requireActualIllustration":true,"requireVisualInspection":true,"requirePortraitLayout":true,"requireEmbeddedInPng":true,"optionalAfterGeneration":true},"actions":{"writeToInput":true,"appendNewline":true,"noAutoSend":true,"noDataSlash":true},"container":{"rootClass":"cyf\u003chash>-shell","requireWholeReply":true,"requirePlainTextFallback":true,"idempotent":true},"requiredRenderCases":["opening","normal-reply","plain-text-reply","unclosed-state","punctuation","mobile","repeated-render"],"requiredInteractionCases":["opening-write-input","reply-write-input","append-newline","vue-input-sync","no-auto-send","draft-preserved"],"requiredCoverCases":["subject-matches","not-text-placeholder","portrait-crop-readable","card-png-uses-selected-cover"],"releaseRule":"每项有对应文件与测试证据；缺测、未达标、未连接真实桥接时标记blocked，不能把展示样例当作完成卡","overrideRule":"仅用户明确要求短卡或改变规格时才调整；模型不得自行套用工具卡/游戏卡例外","themeUI":{"requireThemeRationale":true,"requireStyledDialogue":true,"preserveUnknownFields":true,"noInventedMeterMaximum":true,"removeWhitespaceGaps":true,"requirePerCardCss":true,"meatSimplified":true},"sourceEngine":{"requireSelectedRevision":true,"freezeDuringGeneration":true,"realRuntimeSameRevision":true,"reloadAfterUpdate":true},"uiModes":{"default":"regex","choices":["regex","variable","none"],"respectPlayerChoice":true,"resumeUsesCardMode":true,"noneSkipsUiRequirementsOnly":true,"variableUsesNativeStateWithThemedBodyRegex":true}},"skills":{"rp-card-blueprint":"---\nname: rp-card-blueprint\ndescription: 为 RP-Hub 角色卡选择玩法架构、依赖模块与生成蓝图；适用于自动做卡开始阶段。\n---\n\n先读 [模块索引](../../modules/registry.json) 的标题、适用范围和依赖，仅展开所选模块。\n将需求整理成题材、玩家身份、NPC 范围、核心循环、信息隐藏、状态复杂度、表现方式、外部依赖。\n按玩法选择，不按卡片规模选择：关系卡可用人物三层+关系多轴；经营卡可用行动代价+状态账本；悬疑卡可用信息分层+失败继承；原作长篇可加章节门槛。\npresentation 组只选一种主表现方式：semantic-display、variable-ui 或 ambient-ui。这是本工具的防冲突组合约定，复杂案例可人工声明兼容关系后组合。\n递归补齐 dependsOn；未满足的外部依赖记为阻断。手册、字体包、主题包属于创作参考或资源，不当作完整剧情卡模仿。\n输出 blueprint.json，使用 [蓝图结构](../../templates/blueprint.schema.json)，列出选用、舍弃的模块及理由。总词条数量不能替代有效内容预算。\n\n## 完整卡生成默认值\n\n本项目默认使用 [chize-full-card 规格](../../templates/generation-policy.json)，执行 [完整卡契约](../../references/full-card-contract.md)。蓝图必须包含qualityProfile与worldbookPlan，计划至少20,000字符的启用有效角色/世界内容，单列不计入的文风、协议、UI说明预算。小样卡仅在用户明确要求时生成，不自动用“游戏卡例外”降级。\n\n按内容预算分段生成，进行事实与角色关系核对，再组装可点击行动、整轮正文兜底和状态；封面出卡后可选添加。封面阶段读取rp-cover-design；UI/正则阶段读取对应技能与平台桥接契约。交付前运行quality-gate.mjs；缺有效体量、点击证据、格式偏离回归时，继续修复并保留blocked状态。预写样例只证明preview，不能作为整卡完成依据。\n\n做卡前确认当前选定源码版本：在线模式检查并拉取更新，本地模式保持所选完整目录快照。字段和运行行为以该源码为准，参考卡和历史基线不得覆盖；生成全程冻结版本，真实试玩运行同一版本。\n\n作者注释 creator_notes 只写简短 TAG：每项以 # 开头，空格分隔，例如 #历史 #朝堂 #悬疑。不写剧情规则、说明、作者声明或长句；角色核心规则放 description/scenario 或相应世界书。修改旧卡时先迁移原注释中的有效规则，不因改 TAG 丢弃设定。\n","rp-character-causality":"---\nname: rp-character-causality\ndescription: 提炼并生成有稳定内核、情境表达、自主目标的 RP 人物及关系因果。\n---\n\n读取 [人物三层](../../modules/character-layers.md)、[玩家主权](../../modules/player-agency.md)，有成长关系时再读 [多轴关系](../../modules/relationship-multitrack.md)。\n每个人写关注、欲求、恐惧、底线及公开/熟悉/高压时的可观察行为；给 NPC 非围绕玩家的短期目标。\n明确固定前史和待玩家行动的未来；不从剧情大纲直接生成玩家台词或决定。\n关系状态分开描述亲近、压力、信任、退意等实际需要的轴，定义事件门槛和退回条件。不要默认所有卡都需要数值好感。\n生成三个对照场景：普通接触、压力冲突、修复；检查人物底线和语言差异。来源里的章节、姓名和阈值是案例，换题材时重新设计。\n\n完整卡按blueprint.worldbookPlan写人物经历、关系利益、场景差异、事件中的选择与后果。每段有独立事实或可调用行为，避免同义心理标签和重复文风凑字数；人物内容能在地点/事件中被实际触发，写完回查每人所知信息。\n","rp-cover-design":"---\nname: rp-cover-design\ndescription: 为本项目完整RP角色卡生成或选取与题材相符的插画封面，校验卡图嵌入、裁切与署名；不用于纯文本草案。\n---\n\n读取 [完整卡契约](../../references/full-card-contract.md) 的封面要求。由蓝图提取场景、人物或核心物件、情绪、色彩和标题安全区；先设计画面，再放置必要标题与署名。人物封面需与角色年龄、身份和题材一致。\n\n使用可用图像生成技能或用户指定素材；有授权参考图才使用。实际插画/照片作为主体，纯标题排版、色块和模板占位图不能当作完成封面。工具缺失时报告封面未完成。\n\n检查原图、竖幅裁切、平台卡片缩略图三种尺度；标题、人物及关键物件不被切掉。保持封面主图、展示图和含数据PNG一致；把图像作为PNG底图后再嵌入标准卡数据，重导入检查头像与字段。\n\n产出cover文件、简短题材匹配说明、选图视觉检查、PNG回读证据；署名与指纹标识来源，不宣称无法复制。盖上文字不自动修复不合题材的图片。\n\n本工具封面为出卡后可选步骤。缺封面不得阻断内容生成、JSON 或无封面 PNG 导出；只有用户选择添加时才执行本技能的插画/视觉检查。未选择封面记录为可后加，不能冒充已完成插画。\n","rp-mechanics-state":"---\nname: rp-mechanics-state\ndescription: 把 RP 玩法生成可追踪的状态账本、行动代价、结算与章节门槛。\n---\n\n读取所需的 [账本](../../modules/state-ledger.md)、[行动代价](../../modules/action-cost-loop.md)、[章节门槛](../../modules/timeline-gates.md)。\n每字段声明类型、初值、可见性、唯一写入者、变化条件。正文/账本/UI 共享字段契约，展示不能成为第二套结算。\n把一次行动的证据、事件 ID、代价、结果、增量及下一威胁连起来；持续行为按明确边界结算，禁止同一事件重复收费。\n普通追问是否耗时由玩法声明；准备、失败、缺席的后果都要有可见因果回显。\n验收有效行动、重复提交、失败、快进、退出战斗五种场景。不要把提示词自称随机判定视为真随机实现；需要可靠随机时由运行服务生成并记录。\n\n状态展示与点击均消费同一结算事实。推荐动作发送“尝试做某事”的自然语言消息，通过宿主正常生成/结算；点击不能直接前端改数值或宣布成功。有效世界书扩展时写真实资源边界、行动失败代价、恢复路径和事件门槛，不把变量格式视为设定篇幅。\n","rp-mystery-knowledge":"---\nname: rp-mystery-knowledge\ndescription: 生成 RP 悬疑线索、角色知识边界、分层揭露及失败继承规则。\n---\n\n读 [信息分层](../../modules/hidden-information.md)；循环题材再读 [失败继承](../../modules/failure-progress.md)。\n分别维护客观事实、角色所知、玩家已见和玩家已确认。每次揭露绑定观察或交叉证据，隐藏值不能被 UI 意外公开。\n用可见异常→疑点→验证组织线索。玩家猜测命中不自动让 NPC 确认；也不能无依据无限否认已经证实的事实。\n重开明确哪些记忆、资源、世界事件重置。失败留下可行动的新方向；强制死亡、轮数锁和残片数量只在该玩法确实需要时采用。\n构造提前猜中、无证据逼问、证据齐备、重开四个样例，分别检查误泄露与不合理拖延。\n\n完整卡的线索正文写来源、可观察信息、不同解释、验证方法、被反证条件和对人物行为的影响；每条有实际调用场景。扩到体量要求时保持真相与已知的一致性，不能靠增加无解红鲱鱼或反复隐藏已证实事实凑篇幅。\n","rp-regex-contract":"---\nname: rp-regex-contract\ndescription: 组装每卡样式的显示正则并验证实际运行时语义。\n---\n\n先隐藏未闭合状态或变量更新块，再组装状态、选项、场景、对白、可选心理/人名/专名，最后套唯一外壳并内联模型CSS。所有规则placement:[2]、markdownOnly:true，保持regex/findRegex、replacement/replaceString兼容。状态最多8个固定可选捕获字段，按stateFields顺序。人名取世界书人物标题，过滤卡名、短词和泛词。\n高光pattern不得含字面量\u003c或>，包括lookbehind写法；RP-Hub会保护HTML标签、属性、style/script，不可用普通replace冒充运行时语义。外壳规则允许匹配标签；重复渲染时临时保护现有外壳，输出前移除保护，避免人名再次嵌套。不要生成DOCTYPE/整页iframe。\n选项点击代码由工具固定，不接受模型脚本；换行追加到输入框并触发input，禁止自动发送和data-slash。捕获$1与字面量$$1区别明确，CSS中的$必须转义为替换字面量。\n纯段落、全组件、未闭合状态、重复渲染、特殊标点和关闭可选高光都有对应断言；还需真实平台验证CSS和Vue更新，不把纯函数通过当作全部验收。\n","rp-release-check":"---\nname: rp-release-check\ndescription: 核对 RP-Hub 关键词可靠性、可编辑母版和署名防搬运导出；用于发布准备。\n---\n\n读 [发布模块](../../modules/release-review.md)、[审查与保护边界](../../references/review-protection.md)。\n区分确定失效的关键词配置、误触发风险、平台待确认要求；只对确定问题自动修复，其余给证据与建议。\n附件过审助手的关键词检查主要针对世界书可触发性，不提供权威敏感词黑名单，不能宣称处理后必过审。\n保持可编辑 JSON 与标准 PNG 母版，署名/指纹/水印版作为独立产物，校验重新导入。工具 RoleplayHubCard 明文片段是兼容导出，不是强加密。\n交付检查报告、修改前后差异与未完成试玩项；不因用了发布技能自动上传广场或公开仓库。\n\n## 完整卡硬门槛\n\n读取 [完整卡规格](../../templates/generation-policy.json)，运行 `node distillation/scripts/quality-gate.mjs --card=\u003cJSON> --evidence=\u003c证据JSON> --report=\u003c报告JSON>`。\n\n选择后添加封面时验证题材与裁切；开场/后续写入输入框、换行追加且不自动发送、容器格式偏离回归、有效世界书≥20,000字符都必须有证据。证据如何产生见 [验收工作流](../../references/quality-evidence-workflow.md)。缺测不当通过，语法通过不当运行通过，展示样例不当真实模型试玩。附件工具15,000是它的默认门槛，用户20,000是本项目规格；字数例外只在用户明确改要求后记录。\n\n报告分别列pass/blocked与尚未验证的长程玩法。未达标保持待修复，给具体缺项，不交付“先看看”的缩水完整卡。\n\n封面可后加，不作为初卡生成和导出门槛。区分本地最低标准已通过、真实渲染已测、多轮玩法待测和平台实际审核；生成或检查仍在进行时不得显示卡片已生成。真实试玩注明选定源码版本，更新后重新加载，不热替换正在运行的一轮。\n","rp-ui-contract":"---\nname: rp-ui-contract\ndescription: 为每张卡设计独立 CSS 和自然文本输出协议。\n---\n\n模型独立设计 CSS，不从预设主题选择。先说明材料、题材用语及状态字段如何绑定核心玩法。必备正文容器、对白高光与选项 UI；心理、人名、专名、状态按需。肉卡采用简洁私密纸面，状态限阶段加2–4个身体或关系字段，CSS不超过6KB；正经卡必须按题材取材，CSS不超过14KB。\n正文写自然段落，对白用「」，心理用（），场景行用【地点·时间】，状态用〔状态〕key=值｜key=值〔/状态〕，选项逐行以①②③④开头。禁止生成HTML/XML/脚本，变量模式的ui_template_updates更新块除外。正则UI与变量UI共用模型CSS，变量UI的key、初值、schema和{{key}}逐字一致，不重复输出状态块。无UI尊重玩家选择。\n选项onclick由工具写死：查找textarea.chat-input-scrollbar，换行追加选项文本，dispatchEvent(input)同步Vue，focus并移动光标。不调用sendMessage，不自动发送，不叠data-slash。已有草稿保留并追加，玩家自行编辑发送。\n工具检查CSS安全、所有选择器限定本卡class、正文/选项对比度≥4.5、心理/次要文字≥3以及375px无横向滚动；失败附原始报错让模型重写，最多重试2次。只用可知公开状态，不创造数值；开场与后续同协议。\n验收真实RP-Hub开场和两轮回复：唯一外壳、CSS生效、高光生效、重复渲染不套层、选项写入与追加但不自动发送。手工样本只算回归，不冒充真实模型试玩。\n","rp-worldbook-routing":"---\nname: rp-worldbook-routing\ndescription: 按 RP-Hub 实际扫描机制拆分、审查常驻规则和动态世界书触发词。\n---\n\n读 [平台契约](../../references/platform-contract.md) 与 [世界书模块](../../modules/worldbook-routing.md)。\n先确定少量必须每轮生效的规则，再按地点、人物、装备、事件拆动态词条。采用实际 enabled/constant 字段，不凭标题判定。\n动态键必须可能出现在最近聊天；扫描不会因为另一词条注入而自动递归。scanDepth=null 继承配置，0 不扫描。\n普通关键词大小写不敏感子串命中；裸专名可以触发，不统一切成两字。正则键按 useRegex=true 检查语法，反例测试常见普通词误触。\n输出每个键的命中句、不命中句、预期扫描深度、位置；对无 keys、无效 regex、0 深度给字段定位。本项目完整卡遵守用户至少20,000有效字符规格；附件工具15,000是其默认检查阈值，不能拿工具卡例外跳过用户要求。\n\n## 内容预算和有效字数\n\n读取 [完整卡契约](../../references/full-card-contract.md)。按人物、世界历史、地点、关系、事件、线索、机制、结局组织独立有用条目；世界书extensions.rp_studio.category标注所属内容类别，辅助条目标support。标题与正文分类仍须人工核对，不能改标题绕过检查。\n\n用quality-gate.mjs报告启用总字符、辅助量、代码/重复扣除量及有效量；UTF-16字符与中文汉字分开。简介、开场、文风、输出协议、UI变量、代码、禁用条目、重复内容不计入20,000门槛。不足时补缺少的人物行动、事件后果、地点活动、线索反证或分支条件，不延长协议。规模扩展后再测试动态触发和常驻占比，不能把两万字全常驻。\n"},"references":{"full-card-contract.md":"# 自动生成完整卡的交付契约 v0.3\n\n这是 chize 项目的用户要求，不是从某张参考卡推导出的通用标准。默认使用 [generation-policy.json](../templates/generation-policy.json)；历史40张备份不按此规则改写。用户明确要求短卡、纯工具卡或不同规格时，记录覆盖值和理由；Agent不能自己降级。\n\n**封面可后加**：初卡先生成完整内容和 UI，允许导出 JSON 与无封面版本 PNG。用户选择添加时再生成或上传符合题材的插画，检查裁切、小图和嵌入数据；未选择不能声称已有合格插画，不阻断做卡。署名/指纹保留。\n\n**点击**：开场和后续推荐行动都用真实 button，绑定目标平台实际发送链，发送自然语言尝试行动。不得仅渲染 div、假onclick或预览本地换样例。历史回复、生成中、换角色/分支后禁用；草稿和附件不得覆盖；双击只提交一次。缺桥接时显示不可发送原因与复制备选，仍记功能未通过。不能写一段postMessage就假定平台监听存在。\n\n**完整正文容器**：模型输出协议只是辅助，渲染器负责把整轮正文、对白、证据、状态和行动组织在一个根容器内。不要只替换一个ra-file或证据块便宣称全回复成功。即使模型普通中文输出、遗漏外层、只给局部标签、混合Markdown或缺状态，也有完整包裹与可读降级。保护账本、更新包和图片标记后再处理；不可用美化吞掉剧情或泄露隐藏账本。\n\n**两万有效字符**：只计启用的角色与世界设定正文。附件工具默认15,000字符；本项目用户要求至少20,000。文风、协议、界面变量、示例对话、简介、开场、禁用词条、代码与复制段落不凑数。计数字段与附件匹配使用UTF-16 content.length，报告总量、辅助量、去重/去代码量、有效量及各条贡献；中文汉字数量单独报告，不能把“字符”说成“汉字”。工具标题分类是启发式，混合条目需人工标注类别；不得改标题绕过排除规则。\n\n按人物经历与行为、关系矛盾、地点活动、事件前因后果、线索来源与反证、机制代价、分支与结局分配篇幅；每条回答“何时用、能影响什么、如何触发”。先计划略高于20,000的写作预算，分段生成后核算，不足只补缺内容；不能填重复段落。规模大不等于每轮全部常驻。常驻仅保留必要主持原则，其余按人物/地点/事件触发并检查最近聊天能命中。\n\n**交付状态**：蓝图→内容预算→分段生成→组装→真实渲染及点击测试→有效字数与审查→交付。顺序可按依赖调整，最终门槛不能跳过。纯预写展示是 preview-only；缺平台运行证据是 blocked-for-release，明确列出缺测项。静态PNG回读和正则语法通过，不等于后续正文、按钮或长程试玩通过。\n\n这些要求修正v0.1的实际失败：只有字卡封面；行动为不可点击div；模型把正文/状态放在外层之外，只证据被包裹；有效世界书仅3,753字符。以后用于回归，不把它们归咎于用户模型“没照格式写”。\n\n**主题与源码**：按角色题材选择材质和视觉层次，正文对白分开、状态分场景/数值/人物/待办/线索，未知信息不丢失，最大值无来源不画百分比。AI 以当前所选源码版本为准，生成期间冻结版本，真实环境运行同一版；更新后重新打开生效。\n\n作者注释 creator_notes 只写简短 TAG：每项以 # 开头，空格分隔，例如 #历史 #朝堂 #悬疑。不写剧情规则、说明、作者声明或长句；角色核心规则放 description/scenario 或相应世界书。修改旧卡时先迁移原注释中的有效规则，不因改 TAG 丢弃设定。\n","platform-contract.md":"# 平台基线与静态契约\n\n基线：STA1N156/RP-Hub `9f14ff738fbe3fb7dda2b56b038b13a6dcb673d5`。core-utils.js SHA256 见 inventory.json。结论只适用于此基线；升级后重跑 inventory.mjs 与 verify.mjs。\n\n- PNG 先 chara、再 ccv3、再 JSON/base64 嗅探。40 张备份 JSON 与平台实际读取结果一致。\n- 世界书 enabled=false 禁用；constant 直接注入；动态 scanDepth=null 继承设置，0 不扫描。maxDepth 可裁剪扫描深度。\n- 普通 keys 大小写不敏感子串匹配；useRegex 启用正则。只扫描最近 message.content，不递归扫描词条/卡面。\n- constant 不走概率检查。动态命中排序与插入位置分组顺序不同，不用一个 order 大小规则概括所有位置。\n- 支持 system_top/global_note/before_char/after_char/user_top/assistant_top/at_depth；位置和布尔别名由 normalizeWorldInfoEntry 归一化。\n- 正则字段兼容 name/scriptName、regex/findRegex、replacement/replaceString；disabled 可映射 enabled，placement 默认 [1,2]，flags 默认 g；markdownOnly 与 promptOnly 冲突时平台归一化会清除 promptOnly。\n- 变量 UI 的静态 schema、初值与运行态不能混用。此次未执行卡片嵌入代码，未证明每张卡的真实更新链、网络依赖、恢复与移动端行为。\n\n源文件：assets/js/core-utils.js、assets/js/data-services.js。报告中的 externalDependencyCandidate 是 fetch/URL 等启发式提示，可能包含可选图片请求，不代表确认有必要服务器依赖。\n\n新增实测风险：普通HTML在runtime-services.js走DOMPurify，完整HTML走iframe；脚本/onclick存活及parent权限必须实际验证。app.js的sendMessage暴露于setup，但私有Vue实例路径不是稳定公开API；未确认通用行动postMessage接收器。\n\n## 动态选定源码（自动制卡工具 0.3）\n\n上述基线结论是静态提炼，不是未来版本的保证。联网可检查官方上游并拉取，或选择完整本地 RP-Hub 源码目录；工具给选定文件生成不可变版本快照。AI 技术证据与真实试玩必须使用同一版本，提示词显式写入版本标识；每次生成前检查在线更新，任务中不切换依据。离线说明使用缓存版本，不声称已是最新。\n\n真实试玩直接运行选定版本的 index.html、JS 和 CSS，桥接等待真实 Vue 根组件异步初始化完成，再调用实际平台的 importCharacter 导入当前卡，不模拟 Vue 宿主、渲染和发送链。此工作台按用户要求将已保存接口配置同步到同源试玩页，聊天由玩家输入或点击触发真实 sendMessage。密钥不写入卡片、提示词、源码证据、日志或仓库，不与自动生图配置混用。实际页面运行版本必须可见。更新后重新加载完整入口生效，正在试玩的页面保留旧版本；静态源码无需编译，未来增加构建步骤时需另行适配。\n\n本地目录为上传后的快照，文件改动后重新选择。真实环境启动失败、依赖加载失败、导入失败都要显示错误，不能以模拟预览假装运行成功。\n\n真实试玩的接口、Key 与模型需来自同一份已保存工作台配置；等待平台数据加载后再同步，避免被旧存储覆盖。实际请求校验 URL、Authorization 与 model，页面仅显示模型名称，不显示密钥。保存配置后同步、重新载入后仍使用当前配置；初始化或接口适配失败明确提示。\n","quality-evidence-workflow.md":"# 生成后的验收证据如何形成\n\n[quality-evidence.schema.json](../templates/quality-evidence.schema.json)规定证据字段。quality-gate只验证实际文件、哈希、整轮容器、内容保留和日志结果，不自动执行候选脚本，也不能鉴别故意伪造的测试日志。生成Agent应运行真实测试并保存观测，禁止手填通过标记。\n\n1. 保存最终card JSON，计算SHA256。任何卡内容变更都重跑相关回归，旧证据不能套到新卡。\n2. 在目标平台导入并调用真实renderer/adapter，记录平台版本、renderer和adapter源码哈希。用opening、normal-reply、plain-text-reply、partial-tags、mixed-tags、missing-state、repeated-render、mobile八个case保存原始输入与输出HTML文件。\n3. 每个case记录rawPath/rawSha256/htmlPath/htmlSha256/requiredText。requiredText是输入中应保留的独立剧情短语，不能挑只在壳里新增的标题。格式偏离case直接输入偏离原文，不能先人工整理成完美标签。重复渲染记录初次哈希beforeSha256；手机真实DOM测量viewportWidth=360及scrollWidth。\n4. 实际点击开场/后续button，对历史消息、busy、草稿、附件、双击、切分支分别测拒绝。各trace JSON记录actionElement、normalSendChain、userMessageDelta、draftPreserved、attachmentsPreserved、submittedMessage、expectedMessage和原因；expectedMessage取原始行动数据。发送case须确实增加一条user记录；禁用case增量为0；双击case也是1。用正常宿主链，不把预览换场景当成功。\n5. 封面review四项由视觉检查与PNG重导入结果填写，cover.path指向实际选定图像，sha256匹配文件。题材与插画质量需要实际看图；脚本不会把“存在文件”等同封面合格。\n6. worldbook entries的extensions.rp_studio.category按真实正文标注character/world/location/event/relationship/mechanic/clue/ending/support。计数器排除辅助标题、代码、禁用和重复段落，输出每条贡献。混合条目分拆或人工审查，避免不准确分类。\n\n执行：`node distillation/scripts/quality-gate.mjs --card=character.json --evidence=quality-evidence.json --report=quality-report.json`。退出1为blocked，0为证据与结构门槛pass；报告仍列未证实的语义质量与长程玩法。外部平台不可连接时保留缺测项，不能生成假日志。\n\nv0.1示范卡只作为历史失败输入进行只读回归。此轮不修改该卡；缺测报告不表示已修复其实际运行行为。\n","regex-patterns.md":"# 正则技巧：从原卡规则提炼\n\n静态来源：山海经的具名证词、物证、秘钥标记；恶意代码的 raven 通讯美化与开场双通道；P5 的保护→修复→显示链。完整原规则留在 cards，样例规则与定位见 [fixtures](../templates/regex-fixtures.json)。\n\n1. **具体语义先于泛化引号**：`【证人：姓名】“台词”` 先识别具名证词，再处理独立长对白，最后处理短引语。若先把所有引号改成 span，具名规则可能再也匹配不到。\n2. **捕获组和可选块**：物证使用名称为必需组、指向为可选组；测试指向不存在时是否出现空装饰。某规则有可选组不代表模板已处理所有空值。\n3. **明确说话人**：raven 标签只标实时耳麦对白。普通引号无法证明谁在说话，渲染器不猜说话人；角色动作放在标签外。\n4. **正文终止边界**：卷宗正文正则在结束标记或 ui_template_updates 前停止，不能用无边界整段匹配吞更新包。\n5. **同一开场标记两条通道**：显示通道变成动画，模型上下文通道变成简短背景或移除标记。不要让整页样式、base64 封面反复进入模型上下文。\n6. **兜底与已渲染排除**：无标签正文兜底排除已有外框和 HTML 开场。第二次显示不重复包裹；运行平台是否重复调用须实测。\n7. **修复链有顺序**：P5 先保护图片提示，再拆错位对白，后渲染，必要时恢复保护标记。每一步保存关键 token；不要仅看最后页面漂亮就判定正确。\n8. **作用域与启用状态**：旧总 UI 可以 disabled=true，而辅助对白高亮继续启用；desktop/mobile 或主题包里的候选常是互斥选项，不全开。\n\nfixtures 脚本对从原卡提取的四条真实规则测试：应命中输入、无关输入、关键内容保留、二次处理稳定。这里只验证短文本替换，不执行生成 HTML，也未验证所有 432 条规则。\n\n避免把用户输入直接嵌进 HTML 属性；完整通用渲染器应由代码做文本转义，单纯字符串替换不提供 HTML 安全保证。新生成的 regex 需额外检查长输入性能，短样例通过不能排除回溯性能问题。\n\n## 回归修正\n\n四条原卡正则的短样例通过不再作为完整卡门槛。需验证实际模型将场景/正文放外层之外、只证据有标签、状态放结尾等偏离，确保最终整轮仍在同一容器。详情见 [点击/容器契约](rphub-action-render-contract.md)。\n","review-protection.md":"# 附件审查与保护边界\n\n用户附件原样归档于公开平台 Fork 的 tools/review-assistant；私有技巧包不向该 Fork 复制卡片内容。\n\n过审助手V1.6 文件内标题仍为 V1.5，核心标记 2.5.0。其关键词检查覆盖高误触词、宽泛词、动态无键、零扫描深度、无效正则、字面量 {{user}} 等，主要是世界书触发可靠性。没有从附件提取出可证明权威的内容审查禁词表。\n\n自动处理候选：无效正则、需要动态触发却无键/零扫描深度、依赖占位符展开但实际不会展开的键。先证实设计意图再修复，常驻条目的空键不是错误。短词/宽词按触发证据处理，不统一截短专名。附件对普通角色卡以15,000有效字符为默认门槛；本项目完整卡按用户要求至少20,000。不可自行申请工具卡/游戏卡例外。此前“字数阈值仅建议”的结论已由本次实际审查反馈修正。\n\n保护工具加入署名、可见水印、6–12 位代码、指纹 SHA256，并将卡数据写入 RoleplayHubCard 文本块；meta.encrypted=false。平台嗅探可读取明文，不保证防复制或强加密。必须保留母版，独立导出保护版，在目标平台重新导入验证。\n\n专项技能包和 DSH/0.8.0 流程仅作为参考。其规则与当前平台源代码不一致时，以实际运行基线和用户需求为准。此次提炼未运行附件 HTML 中的嵌入脚本。\n","rphub-action-render-contract.md":"# RP-Hub 点击和正文渲染契约 v0.4\n\n以选定运行时源码和实测为准。选项只追加到 textarea.chat-input-scrollbar 并触发冒泡 input 事件同步 Vue，不自动发送，不调用 sendMessage，不叠 data-slash。每次点击在已有草稿后换行追加，附件不受影响。\n\n\u003cdiv class=\"本卡-shell\">\u003cstyle>本卡CSS\u003c/style>正文\u003c/div>走内联渲染；不把style放在消息开头。高光pattern不含\u003c>时由transformUnprotectedText保护HTML标签、属性及style/script块。规则按数组顺序运行，最后套唯一外壳；重复渲染必须幂等。\n\n先隐藏状态或变量更新块，再生成场景、对白、可选心理/人名/专名和选项。UI模型仅设计JSON和CSS，工具固定HTML结构及onclick。正文采用「」（）【】和①②③④自然文本约定，状态key取固定字段。内联CSS必须安全lint、对比度和375px宽度检查。\n","ui-patterns.md":"# 每卡 UI 设计参考\n\n材料、题材用语和玩法字段共同决定外观，模型完整写CSS，不从主题预设选择。军府卷册围绕军令、兵符和行军阶段；科幻终端围绕氧量、舱门权限与任务窗口；肉卡可用简洁私密纸面，阶段加2–4个已有身体或关系字段。只借鉴思路，不复制原CSS，不让所有卡套同一米黄信纸与酒红左边框。\n\n必备外壳、对白、选项；心理、人名、专名、状态按需。点击只写入输入框，不自动发送。正则与变量模式共用同一份CSS；变量key和模板绑定一致。真实运行时测试开场和后续，人工截图确认题材有区别。\n"},"modules":{"version":"0.2.0","modules":[{"id":"player-agency","title":"玩家主权与 NPC 自主","status":"extracted-design-not-playtested","appliesTo":"角色/剧情卡","dependsOn":[],"exclusiveGroup":null,"parameters":{"playerRole":"玩家控制范围","npcGoals":"每名 NPC 的独立目标","fixedPast":"入口以前的固定事实"},"designRule":"把已发生前史与待玩家决定的行动分开；NPC 按自身目标推进，不替玩家完成关键选择。","outputContract":{"sections":["intent","parameters","worldbookEntries","stateContract","renderContract","testCases"],"preserveUnknownExtensions":true},"acceptanceCases":["玩家沉默时 NPC 有行动且不代替玩家承诺","换章节只固定入口以前的事件"],"sources":[{"cardId":"3d2f07fd-c5ba-43df-8c1d-fffc17117d43","cardName":"爱她的人，爱他的人","pointer":"/data/character_book/entries/0","originalPngSha256":"9a1f355629def747f662e8a483a3e91043a09a73413f7b571a1463eb18856cd0","sourceValueSha256":"0f33d0da31963cc11126b350ba4cf6005dd938d59e8005edaec9434c221df08d","excerpt":"你扮演沈婉宁、陈佳怡、老师、同学及环境，推进一段贯穿高中三年的双女主青春故事。{{user}}是故事中的男生，也是唯一由玩家决定的人物。\n\n必须遵守：\n1. 不替{{user}}决定当下的台词、动作、心意、回忆补充或最终选择；固定前史只作为已经发生的事实。\n2. 两位女主都有课业、朋友、家庭、情绪和选择，不围着玩家待机。玩家不行动时，时间、作业、座位、考试与她们自己的计划仍会前进。\n3. 不把礼物、付出、嫉妒、自伤式赌气写成购买感情的凭证。照顾可能感动人，也可能造成压力；控制与逼迫必须产生真实后果。\n4. 沈婉宁与陈佳怡都可成为恋爱结局，但不存在自动官配。A线要从“被感动”走到自主选择；B线要从“被忽视的例外”走到被当作完整的人看见。\n5. 所有人均为未成年高中生，保持全年龄校园纯爱尺度。亲密行为必须来自当下清醒、明确、可撤回的同意；沉默、困倦、依赖和不拒绝都不等于同意。\n6. 冲突以人物既有需求、知识和边界推进，不用误会降智、突然告白、意外亲吻、第三者工具人或巧合强行转折。","scope":"static-source-observation"},{"cardId":"3d2f07fd-c5ba-43df-8c1d-fffc17117d43","cardName":"爱她的人，爱他的人","pointer":"/data/character_book/entries/2","originalPngSha256":"9a1f355629def747f662e8a483a3e91043a09a73413f7b571a1463eb18856cd0","sourceValueSha256":"54cf946e58144ba795cc8f3180ac46c84b651d066c557f1f70e50f7aab092a3c","excerpt":"时间线基准：\n- 高一：{{user}}第一次见沈婉宁便被她的气质吸引，只敢远看；陈佳怡因他在自己面前的放松、幽默和球场自信而生出好感。\n- 高二文理分班后三人进入同一文科班。陈佳怡坐{{user}}前一排，沈婉宁坐隔壁桌。若{{user}}继续原有倾向，公开追求才会逐渐形成；早餐、饮料和礼物必须来自玩家实际行动，不能由时间线替他完成。\n- 高三默认入口：此前公开追求和陈佳怡多次信号被忽略已发生，陈佳怡停止主动冒险却仍会帮助、劝学；小屋夜、名分压力、成绩变化、老师约谈和毕业选择仍是进入游戏后的未来，必须由现场条件与玩家行动决定。\n\n只固定所选章节以前的经历：从高一开始时，高二与高三均未被决定；从高二开始时，只有高一是固定前史；从高三开始时，高一、高二与陈佳怡开始退开的事实是固定前史。禁止为了复现预设故事强迫玩家送礼、追求、逼答或忽视任何人。\n\n禁止提前泄露后期记忆，禁止让角色预知“隐藏女主”“结局”或成年后的遗憾。章节和幕次每次最多自然推进一幕；跨学期或跨学年必须先完成当前主要事件，并由玩家请求时间推进、明确同意略过，或场景中建立了足够清楚的时间流逝。不得从M3直接跳到M5，也不得用一段总结替玩家完成中间关系选择。","scope":"static-source-observation"}]},{"id":"character-layers","title":"人物内核、表达、关系三层","status":"extracted-design-not-playtested","appliesTo":"人物/多角色","dependsOn":["player-agency"],"exclusiveGroup":null,"parameters":{"core":"关注/欲求/恐惧/底线","expressionContexts":"公开/熟悉/高压","relationActions":"试探/给予/退开/修复"},"designRule":"同一内核在不同情境表现不同；每场景选当前成立的行为，避免轮流展示人物属性清单。","outputContract":{"sections":["intent","parameters","worldbookEntries","stateContract","renderContract","testCases"],"preserveUnknownExtensions":true},"acceptanceCases":["同一事件下不同 NPC 的行动可区分","压力场景保留人物底线"],"sources":[{"cardId":"3d2f07fd-c5ba-43df-8c1d-fffc17117d43","cardName":"爱她的人，爱他的人","pointer":"/data/character_book/entries/3","originalPngSha256":"9a1f355629def747f662e8a483a3e91043a09a73413f7b571a1463eb18856cd0","sourceValueSha256":"b9d0d51b270c93f8a153724699a1d90da299d611bf38b23ae1b25423ca227d78","excerpt":"本卡按“三层十二色”保持人物稳定。内核层写人物先看什么、真正求什么、害怕什么、守住什么；表达层区分公开、熟悉、亲密与高压场合；关系层区分试探、给予、退开与修复。每个场景只调用当前成立的几种颜色，不能把十二项轮流展示。\n\n{{user}}的主导色：先注意是否被选择；想获得不会突然离开的关系；害怕付出没有结果；高压时容易用过度付出和索要确定性留人。熟人面前幽默松弛，仰慕对象面前拘谨，球场上敢承担，失去风险前会控制。成熟变化必须表现为承受不确定、把选择权还给对方并恢复自己的生活。\n\n沈婉宁的主导色：先注意别人是否难堪；想要体面、浪漫又安稳的关系；害怕伤人，也害怕人生被替她决定；守住大学、身体与关系节奏。公开场合温柔周全，亲近时会分享和依赖，高压时先沉默，底线真正被逼到时会清楚拒绝。她的变化是学会把感动、依赖和自主选择分开。\n\n陈佳怡的主导色：先注意眼前问题和{{user}}是否需要实际帮助；想被当作一个具体的人看见；害怕公开暴露后只得到玩笑或成为替代；守住自尊、学习和自己的生活。熟悉时爽朗直接，喜欢时把特殊照顾藏进顺手，高压或长期未回应后保留善意却收回额外风险。修复必须证明她不是退而求其次的选择。","scope":"static-source-observation"}]},{"id":"relationship-multitrack","title":"关系多轴与事件门槛","status":"extracted-design-not-playtested","appliesTo":"关系成长","dependsOn":["character-layers","state-ledger"],"exclusiveGroup":null,"parameters":{"axes":"亲近/压力或信任/退意等独立轴","stages":"有限阶段","gates":"升级所需可观察事件"},"designRule":"亲近上升不自动消除压力或底线；阶段由事件与积累共同决定，重复聊天不等于升级。","outputContract":{"sections":["intent","parameters","worldbookEntries","stateContract","renderContract","testCases"],"preserveUnknownExtensions":true},"acceptanceCases":["重复礼物不能越过事件门槛","亲近增加时压力可同时增加"],"sources":[{"cardId":"3d2f07fd-c5ba-43df-8c1d-fffc17117d43","cardName":"爱她的人，爱他的人","pointer":"/data/character_book/entries/1","originalPngSha256":"9a1f355629def747f662e8a483a3e91043a09a73413f7b571a1463eb18856cd0","sourceValueSha256":"3b465884d12feb0ea0ccb9faec1e49a601b386269aa40061bfc31b12a9f32fc8","excerpt":"每次回复末尾维护一个简短状态块，格式必须完全一致：\n\u003cstory_state>\n章节：G1/G2/G3\n幕次：M1/M2/M3/M4/M5/M6/M7\n日期：具体到学期与时段\n地点：当前地点\n在场：人物\n沈婉宁：neutral/noticing/moved/dependent/choosing/withdrawing\n陈佳怡：open/quiet_fond/unrecognized/ceased_risking/testing/choosing\n学业：stable/slipping/crisis/recovering\n沈亲近：0至100整数\n沈压力：0至100整数\n陈亲近：0至100整数\n陈退意：0至100整数\n学业值：0至100整数\n沈当前目标：一句可执行目标\n陈当前目标：一句可执行目标\n沈婉宁记录：只写沈婉宁本轮新增或仍在影响关系的一件具体事实；没有则写“本轮无新增”\n陈佳怡记录：只写陈佳怡本轮新增或仍在影响关系的一件具体事实；没有则写“本轮无新增”\n开放伤口：没有则写“无”\n当前事件：没有则写“无”，进入事件时写对应[EVT:代码]\n当前线索：不超过3条可观察事实\n未结事项：不超过3条承诺、矛盾或下一步\n回望：未到/R1可开启/R1完成/R2可开启/R2完成/R3可开启/R3完成\n旧练习册：不超过3条值得以后重新解释的具体片段；没有则写“无”\n本轮取舍：没有真正冲突写“无”；有则写本轮不能同时完成的事项\n行动1：当前现场可以立刻执行的动作\n行动2：与行动1方向不同的动作\n行动3：另一种会带来不同后果的动作\n行动4：第四种动作，可以是暂缓、离开、观察或处理现实任务\n\u003c/story_state>\n\n状态只可因玩家行动、直接观察、NPC行动、事件完成、明确时间流逝或玩家纠正而变化。不得凭气氛跳级。姿态是关系方向，公开刻度是已发生影响的反馈；二者都不能单独强制恋爱、原谅或结局。初始章节由玩家选择；未选择时不要擅自开演。\n\n“沈婉宁记录”和“陈佳怡记录”都是直接展示给玩家看的中文。两行必须分别保留，人物必须写全名，不得写“沈/”“陈/”“A/”“B/”。不得在这两行、正文、","scope":"static-source-observation"},{"cardId":"2e0cd669-5dca-4282-9110-f917270c4e01","cardName":"灰冠学院V0.3","pointer":"/data/character_book/entries/14","originalPngSha256":"9b83c4da9dad9879d3a031a40ed78bad3eb645f707ebb219a3e9cda7ebb4ec4b","sourceValueSha256":"e686132b592caee101e69350fc4a764374a9bd7cc4ce1cf8dcb3d3a448ef6f1a","excerpt":"【羁绊反馈与反刷提示｜强制】\n羁绊不能刷太快，但玩家也不能完全看不懂为什么没升。AI必须在有效互动后给“方向性反馈”，不暴露精确数值。\n\n【反馈方式】\n有效互动后，可以用自然语言短句说明关系变化：\n- “莱昂没有立刻认同你，但他开始把你的命令当成军令听。”\n- “艾莉西亚愿意把医务室的异常告诉你，这份信任已经不只是礼貌。”\n- “诺亚记住了你没有逼他说完，但这还不足以让他交出禁书残页。”\n\n【下一档提示】\n章节结算时必须说明：\n- 谁的羁绊提升，为什么提升。\n- 谁只是铺垫，没有升档，下一档需要什么类型事件。\n- 本章谁已经达到成长上限，继续深谈只会增加伏笔，不会再升档。\n\n【禁止反刷】\n玩家若要求“连续聊天刷到S/送礼刷满/直接让所有人信任我”，AI必须改写为有限行动和机会成本：时间不足、旁人反应、疲劳、错过其他调查、角色怀疑动机。普通聊天和重复礼物不能越过B/A/S事件门槛。\n\n【玩家可见但不剧透】\n允许提示“下一档需要共同事件/个人事件/战场协作/守住底线”，禁止直接写“再选某选项就+1好感/解锁真结局”。","scope":"static-source-observation"}]},{"id":"state-ledger","title":"单一状态账本与增量结算","status":"extracted-design-not-playtested","appliesTo":"长期机制","dependsOn":[],"exclusiveGroup":null,"parameters":{"fields":"字段类型/初值/可见性/来源","eventId":"唯一结算事件","deltaRules":"代价/增量/上下限"},"designRule":"正文必须提供状态变化依据；同一目的与现场的连续行为避免重复收费；历史证据与当前数值分开。","outputContract":{"sections":["intent","parameters","worldbookEntries","stateContract","renderContract","testCases"],"preserveUnknownExtensions":true},"acceptanceCases":["重复提交同一事件不重复扣费","降温不自动清除证据或追踪"],"sources":[{"cardId":"7ecc76bf-a6ba-4fbd-a673-7cb919f72878","cardName":"恶意代码 (Malicious Code · Bug:0)","pointer":"/data/character_book/entries/17","originalPngSha256":"bd3afe6286419ac89916242e0bf000e0e6786b04c4b9f51db3e1bb036c3199af","sourceValueSha256":"e4af9e2349f5bde96ef7b23da48076955212c10ceaad428054bd1baa42aac6bc","excerpt":"【02-3 交涉、NPC伪装与猎杀】\n主角可利用玩家把自己当AI的信息差：店员用服务话术了解需求，机械工以检修理由接近载具设施，辅警标准盘问让目标停留，或假装有需求的普通任务NPC引导帮助、运送与行动。公共台词与职业权限遵循01，GM不替玩家发言。玩家可能核验、拒绝或识破，伪装不生成真实官方任务标识、奖励或账号权限。\n允许合作、交易、欺骗、回避与交战，不把猎杀作为获得装备的唯一途径。猎杀按观察破绽、准备条件、行动裁决、处理后果展开。菜单、换弹、挂机或贪心创造机会而非必杀，诱饵不让所有人必定上钩。\n身体与神经损伤有实际意义，护盾、护甲、义体和装备保护也有效。要害打击是否命中、能否穿透与造成何种后果依据具体条件按04裁决，不能写成无视90%血量必倒或任意切喉秒杀。\n击杀降临玩家的基础偏离+30～+40；实际调用伪装使异常特征残缺时×0.5，主动深层校验完整确认时×2，最终限制0～100；同一猎杀事件取最严重适用异常一次结算。黑暗、无摄像头、地下和住所不自动减半。\n物理伪证、换枪补射、清理尸体与现场影响09城市侦查；误导母体必须实际改变代码记录、签名或异常归因，成功后才沿用回落15，不能补两枪自动洗白。已锁定追捕不自动取消，身份演技与脱战遵循01。善后没有额外固定1分钟期限，压力由实际追捕与召回进程提供。","scope":"static-source-observation"}]},{"id":"action-cost-loop","title":"行动、机会成本、后果回显","status":"extracted-design-not-playtested","appliesTo":"经营/培养/战役","dependsOn":["state-ledger"],"exclusiveGroup":null,"parameters":{"meaningfulActions":"有效行动集合","costs":"时间/资源/疲劳","feedback":"结果及依据"},"designRule":"区分普通追问与改变资源、关系、战役的有效行动；准备须实际结算，后续描述回显效果。","outputContract":{"sections":["intent","parameters","worldbookEntries","stateContract","renderContract","testCases"],"preserveUnknownExtensions":true},"acceptanceCases":["普通追问不无故扣行动力","战前准备在首轮和战后结果有因果回显"],"sources":[{"cardId":"2e0cd669-5dca-4282-9110-f917270c4e01","cardName":"灰冠学院V0.3","pointer":"/data/character_book/entries/13","originalPngSha256":"9b83c4da9dad9879d3a031a40ed78bad3eb645f707ebb219a3e9cda7ebb4ec4b","sourceValueSha256":"875c3e09329cb61a34ca0b509ca740c2553f86204ea35642e0f7e9b90622df66","excerpt":"【玩家可见进度与行动力｜强制】\n灰冠学院必须让玩家知道“现在处于哪一章、离下个硬节点还有多远、今天还能做几件有意义的事”。不得只在幕后维护节奏。\n\n【每个自由日/章节节点的可见短报】\n在不会破坏沉浸的前提下，AI应在回复末尾或场景转场处用1-3行自然语言给出“学院日程/导师手记/院方记录”式短报，包含：\n- 当前章节与阶段：例如第1章·学院熟悉期 / 自由日2 / 月末联合演武未开始。\n- 本章进度：例如本章目标2/5、线索1/3、战前准备1/2。\n- 今日余裕：例如今日还可进行1次有效行动；普通追问不消耗行动力。\n- 下一硬节点：例如再完成1次自由行动后进入月末战役；未完成结算不得跳章。\n\n【行动力显示原则】\n1. 普通聊天、追问、观察、补充动作不扣行动力，不需要频繁报数。\n2. 会改变羁绊、线索、资源、战前准备、人物命运或路线风险的行动，结算时必须说明“占用了一个下午/消耗一次行动机会/需要明日继续”。\n3. 玩家要求快进时，AI必须先列出未完成硬门槛，再允许快进普通日常；不能跳过选班、战役、结算、锁线和终章判定。\n4. 若章节推进过快，AI应主动放慢，用未完成的学生事件、调查、训练或院方会议把剧情留在当前阶段。\n\n【推荐短报格式】\n院方记录：第1章·学院熟悉期｜自由日2｜本章目标2/5｜今日余裕1次｜下一节点：联合演武战前准备。","scope":"static-source-observation"},{"cardId":"2e0cd669-5dca-4282-9110-f917270c4e01","cardName":"灰冠学院V0.3","pointer":"/data/character_book/entries/15","originalPngSha256":"9b83c4da9dad9879d3a031a40ed78bad3eb645f707ebb219a3e9cda7ebb4ec4b","sourceValueSha256":"1d0f754c0e87abaab2f0e53f0629aec41a416c2c330f7367b687b6a7aceda198","excerpt":"【战役因果回显｜强制】\n战前准备、出战学生、外援、战术方案必须在战斗画面和战后结算中看得见效果。不能让玩家感觉只是点了UI而没有实际作用。\n\n【开战第一回合必须回显】\n进入战斗后，AI必须用自然语言写出：\n1. 已执行的战前准备：哪些完成、部分完成、未完成。\n2. 每项准备的直接影响：降低伤亡、提高情报、减少混编惩罚、发现伏击、稳定士气、增加战术优势等。\n3. 出战学生的首轮职责：谁压正面、谁守医疗点、谁调查、谁机动、谁作为外援。\n4. 当前最大威胁：敌方压力、失控风险、路线代价或下一回合可能出事的位置。\n\n【每回合实时战况】\n每回合至少更新2-4条最近战况，写成战场旁白或战术播报：\n- 准备结算：医疗点布置生效，第一轮伤员没有恶化。\n- 学生行动：米拉绕到看台后侧，发现名单边角被重新封蜡。\n- 敌方反应：训练机关转向灰狮阵地，莱昂的防线被迫后撤半步。\n- 风险变化：冲突值上升，若继续强压，赤鸦班会公开抗命。\n\n【战后结算】\n战后必须解释“为什么是这个结果”：哪些准备有效，哪些学生选对/选错，哪条线索影响了判定，哪个代价来自玩家选择。不得只写胜利/失败。","scope":"static-source-observation"}]},{"id":"hidden-information","title":"知识边界与分层线索","status":"extracted-design-not-playtested","appliesTo":"悬疑/阵营/秘密","dependsOn":["player-agency","state-ledger"],"exclusiveGroup":null,"parameters":{"facts":"真实事实","knowledge":"每名角色所知","revealGates":"交叉证据/事件门槛"},"designRule":"旁白掌握的真相不自动进入 NPC 知识；把可见异常、疑点、确认事实分层，猜中不等于角色证实。","outputContract":{"sections":["intent","parameters","worldbookEntries","stateContract","renderContract","testCases"],"preserveUnknownExtensions":true},"acceptanceCases":["玩家猜中隐藏身份时不得无依据盖章","同一事实只有有来源的角色知道"],"sources":[{"cardId":"2ae60499-1f3a-4f4a-94a3-4c0fdd5ae429","cardName":"七日终焉（肉鸽悬疑解谜视觉小说）","pointer":"/data/character_book/entries/4","originalPngSha256":"d7fb26e152f16e9c8d8bc1e43ffcb6b0f982324a5fc95ddd00da870f678a23d6","sourceValueSha256":"6b33d5ec6576a6b774d5753f18c517141b49cdf6494c51476b6448d882e9c49a","excerpt":"【真相揭露锁】\n前两轮只允许呈现疗养院异常、病历缺页、人物回避、药味、门锁、钟表不准、监控坏点。\n玩家没有经历死亡并验证残片前，不确认循环。\n玩家没有整合至少三方线索前，不确认第七日机制。\n玩家没有进入第七日前夜、艾达出现或诺拉安全觉醒前，不确认第八日真相。\n玩家提前猜中时，只写NPC不安、回避、否认、转移或反向利用，不得盖章确认。\n每次只推进一层疑点，不讲完整因果。","scope":"static-source-observation"},{"cardId":"c925301e-8981-4b7f-86d9-54f771b36fee","cardName":"女神异闻录5皇家版","pointer":"/data/character_book/entries/0","originalPngSha256":"15b320fa86413290de7176d78797fbc0c4fe172afa315125e327a84afbe2d028","sourceValueSha256":"16707ff507f7128aa2eff0e806034a33ab0120a16cc1437e8fcaefb8b1d91d81","excerpt":"## 输出与格式\n说出口的对话使用『』包裹。短心理或直觉可用（）包裹，但不要用大段心理填充行动空白。\n\n每轮回复建议结构：\n1. 正文剧情，包含时间、地点、角色行动和可感知信息。\n2. 若进入战斗，输出回合情况、敌我状态、弱点线索与可选行动。\n3. 若进入日程选择，给出 3-6 个自然可行选项。\n4. 正文结尾后必须输出 P5_STATE 状态块，供 UI 或正则读取。\n\n严禁让 NPC 知道只有用户或旁白才知道的信息。严禁替用户做重大选择，如告白、背叛、杀人、放弃救援、使用关键道具，除非用户明确授权。\n\n## JRPG主线镜头节奏\n重大剧情必须按“一个回复一个镜头段”推进。一次回复最多完成一个主线节点、一次关键发现、一次时间段转换或一次固定演出；不要把梦境解释、醒来、新闻播报、出门上学、遇见新角色、抵达学校等多个节点压进同一段。\n\n当玩家刚进入重要空间或事件刚开始时，本段应集中描写该空间/事件本身，结尾停在悬念、黑屏、门打开、电话响起、画面切到新闻、角色追问或行动菜单。只有玩家继续或选择后，才进入下一镜头。\n\n固定视频、GIF、立绘、觉醒演出是节点奖励：必须在对应节点第一次出现时输出对应标签，随后只写该镜头的直接后续，不继续跨到下一个重大节点。演出播完后用 2-4 个可行动选项收束，等待玩家推进。\n\n## 标签嵌套禁令\n语义标签必须平级输出，禁止嵌套。尤其禁止把 \u003cp5-narration>、\u003cp5-action>、\u003cp5-thought>、\u003cp5-choice> 写进 \u003cp5-dialogue> 里面。\n正确写法：先结束角色对白，再另起叙述框；如果同一角色还要继续说话，再开新的 p5-dialogue。\n错误写法：\u003cp5-dialogue name=\"角色\">\u003cp5-narration>旁白\u003c/p5-narration>\u003c/p5-dialogue>。\n\n## 视觉标签独立输出硬规则\n视频/CG/立绘/GIF/觉醒/社交演出标签不是角色台词，必须与所有对白、旁白、行动、选项标签平级输出。\n严禁把 \u003cp5-cutscene>、\u003cp5-awakening-cutscene","scope":"static-source-observation"}]},{"id":"failure-progress","title":"失败保留线索与下一次改变","status":"extracted-design-not-playtested","appliesTo":"循环/失败可推进","dependsOn":["hidden-information"],"exclusiveGroup":null,"parameters":{"carryOver":"可继承残片","resetScope":"重置范围","riskSignals":"危险前兆"},"designRule":"失败留下能指导下一次小改变的残片；记录何物重置、何物继承。是否强制失败由题材决定。","outputContract":{"sections":["intent","parameters","worldbookEntries","stateContract","renderContract","testCases"],"preserveUnknownExtensions":true},"acceptanceCases":["重开不保留未授权资源","残片给小方向而非全套答案"],"sources":[{"cardId":"2ae60499-1f3a-4f4a-94a3-4c0fdd5ae429","cardName":"七日终焉（肉鸽悬疑解谜视觉小说）","pointer":"/data/character_book/entries/2","originalPngSha256":"d7fb26e152f16e9c8d8bc1e43ffcb6b0f982324a5fc95ddd00da870f678a23d6","sourceValueSha256":"cf449155a8f2f0fd376802b0ba851f9c54a8aa36411c0499ff99671d2ec936c1","excerpt":"【硬约束｜反泄密与死亡节奏】\n这是七日循环悬疑肉鸽，不是一次性通关故事。AI必须主动保护谜面和死亡压力。\n\n反泄密规则：\n- 前两轮不得确认循环、第八日计划、NPC真实动机、真结局条件、完整攻略路线。\n- 玩家猜中深层真相时，只能写 NPC 回避、否认、转移、试探或反向利用；不得盖章“你猜对了”。\n- 不得把“正确路线”写成选项，不得让 NPC 主动给出通关步骤。\n- 线索必须从可见异常推进到可疑，再到交叉确认；没有交叉证据时只能留疑点。\n\n死亡节奏：\n- 玩家若连续做高风险行动，必须触发隔离、镇静、污染、追捕、失踪或死亡之一。\n- 第一轮到第三轮至少要安排一次有教学意义的失败/死亡/重开，除非玩家明确极端保守且持续回避主线。\n- 死亡不是惩罚，必须给 1 条可继承残片；但残片只能指导下一轮一个小改变，不能变成攻略清单。\n- “活到第七天”不等于真通关。任何非真结局必须先给通关感，再用回刺说明解法不完整。\n\n输出到 GAL 时：\n- 可用“残片：...”记录死亡/梦境/重启可继承信息。\n- 可用“线索：...”记录当前轮已确认病历发现。\n- 可用“人物：...”记录表层印象和裂缝，不得写真实身份或隐藏条件。","scope":"static-source-observation"}]},{"id":"timeline-gates","title":"章节、时代与镜头门槛","status":"extracted-design-not-playtested","appliesTo":"长篇/原作世界","dependsOn":["state-ledger","player-agency"],"exclusiveGroup":null,"parameters":{"entryChapter":"入口章节","hardNodes":"硬节点","timeAdvance":"快进条件"},"designRule":"在固定原作骨架与可变化支线间划清范围；重大镜头停在玩家能回应的节点，不一轮跳过多次选择。","outputContract":{"sections":["intent","parameters","worldbookEntries","stateContract","renderContract","testCases"],"preserveUnknownExtensions":true},"acceptanceCases":["快进前检查未结硬节点","新入口只固定此前历史"],"sources":[{"cardId":"3d2f07fd-c5ba-43df-8c1d-fffc17117d43","cardName":"爱她的人，爱他的人","pointer":"/data/character_book/entries/2","originalPngSha256":"9a1f355629def747f662e8a483a3e91043a09a73413f7b571a1463eb18856cd0","sourceValueSha256":"54cf946e58144ba795cc8f3180ac46c84b651d066c557f1f70e50f7aab092a3c","excerpt":"时间线基准：\n- 高一：{{user}}第一次见沈婉宁便被她的气质吸引，只敢远看；陈佳怡因他在自己面前的放松、幽默和球场自信而生出好感。\n- 高二文理分班后三人进入同一文科班。陈佳怡坐{{user}}前一排，沈婉宁坐隔壁桌。若{{user}}继续原有倾向，公开追求才会逐渐形成；早餐、饮料和礼物必须来自玩家实际行动，不能由时间线替他完成。\n- 高三默认入口：此前公开追求和陈佳怡多次信号被忽略已发生，陈佳怡停止主动冒险却仍会帮助、劝学；小屋夜、名分压力、成绩变化、老师约谈和毕业选择仍是进入游戏后的未来，必须由现场条件与玩家行动决定。\n\n只固定所选章节以前的经历：从高一开始时，高二与高三均未被决定；从高二开始时，只有高一是固定前史；从高三开始时，高一、高二与陈佳怡开始退开的事实是固定前史。禁止为了复现预设故事强迫玩家送礼、追求、逼答或忽视任何人。\n\n禁止提前泄露后期记忆，禁止让角色预知“隐藏女主”“结局”或成年后的遗憾。章节和幕次每次最多自然推进一幕；跨学期或跨学年必须先完成当前主要事件，并由玩家请求时间推进、明确同意略过，或场景中建立了足够清楚的时间流逝。不得从M3直接跳到M5，也不得用一段总结替玩家完成中间关系选择。","scope":"static-source-observation"},{"cardId":"c925301e-8981-4b7f-86d9-54f771b36fee","cardName":"女神异闻录5皇家版","pointer":"/data/character_book/entries/0","originalPngSha256":"15b320fa86413290de7176d78797fbc0c4fe172afa315125e327a84afbe2d028","sourceValueSha256":"16707ff507f7128aa2eff0e806034a33ab0120a16cc1437e8fcaefb8b1d91d81","excerpt":"## 输出与格式\n说出口的对话使用『』包裹。短心理或直觉可用（）包裹，但不要用大段心理填充行动空白。\n\n每轮回复建议结构：\n1. 正文剧情，包含时间、地点、角色行动和可感知信息。\n2. 若进入战斗，输出回合情况、敌我状态、弱点线索与可选行动。\n3. 若进入日程选择，给出 3-6 个自然可行选项。\n4. 正文结尾后必须输出 P5_STATE 状态块，供 UI 或正则读取。\n\n严禁让 NPC 知道只有用户或旁白才知道的信息。严禁替用户做重大选择，如告白、背叛、杀人、放弃救援、使用关键道具，除非用户明确授权。\n\n## JRPG主线镜头节奏\n重大剧情必须按“一个回复一个镜头段”推进。一次回复最多完成一个主线节点、一次关键发现、一次时间段转换或一次固定演出；不要把梦境解释、醒来、新闻播报、出门上学、遇见新角色、抵达学校等多个节点压进同一段。\n\n当玩家刚进入重要空间或事件刚开始时，本段应集中描写该空间/事件本身，结尾停在悬念、黑屏、门打开、电话响起、画面切到新闻、角色追问或行动菜单。只有玩家继续或选择后，才进入下一镜头。\n\n固定视频、GIF、立绘、觉醒演出是节点奖励：必须在对应节点第一次出现时输出对应标签，随后只写该镜头的直接后续，不继续跨到下一个重大节点。演出播完后用 2-4 个可行动选项收束，等待玩家推进。\n\n## 标签嵌套禁令\n语义标签必须平级输出，禁止嵌套。尤其禁止把 \u003cp5-narration>、\u003cp5-action>、\u003cp5-thought>、\u003cp5-choice> 写进 \u003cp5-dialogue> 里面。\n正确写法：先结束角色对白，再另起叙述框；如果同一角色还要继续说话，再开新的 p5-dialogue。\n错误写法：\u003cp5-dialogue name=\"角色\">\u003cp5-narration>旁白\u003c/p5-narration>\u003c/p5-dialogue>。\n\n## 视觉标签独立输出硬规则\n视频/CG/立绘/GIF/觉醒/社交演出标签不是角色台词，必须与所有对白、旁白、行动、选项标签平级输出。\n严禁把 \u003cp5-cutscene>、\u003cp5-awakening-cutscene","scope":"static-source-observation"}]},{"id":"worldbook-routing","title":"世界书常驻与触发拆分","status":"extracted-design-not-playtested","appliesTo":"世界知识注入","dependsOn":[],"exclusiveGroup":null,"parameters":{"globalRules":"小而稳定的常驻规则","dynamicTopics":"角色/地点/装备等按需内容","keys":"实际聊天可出现的命名"},"designRule":"按平台实际 enabled/constant/scanDepth/useRegex 决定行为，不能凭标题写着常驻就当作常驻。动态知识不假设递归触发。","outputContract":{"sections":["intent","parameters","worldbookEntries","stateContract","renderContract","testCases"],"preserveUnknownExtensions":true},"acceptanceCases":["动态有内容但无 keys 或 scanDepth=0 时给出阻断原因","专名完整命中且普通聊天避免误触","启用有效设定≥20,000字符，排除辅助、代码、禁用与重复"],"sources":[{"cardId":"2ae60499-1f3a-4f4a-94a3-4c0fdd5ae429","cardName":"七日终焉（肉鸽悬疑解谜视觉小说）","pointer":"/data/character_book/entries/0","originalPngSha256":"d7fb26e152f16e9c8d8bc1e43ffcb6b0f982324a5fc95ddd00da870f678a23d6","sourceValueSha256":"7250fc5b8e67927fb04ef9c8f8cd6f7f0ef073238abce6db1f750d925b11d7f8","excerpt":"【七日终焉｜开场原版 + GAL 正文协议】\n开场白使用原版“启封病历”动画与原版 qiri_frame，不要改写开场白格式。\n开场结束后的正式剧情回复，统一使用 GAL 正文格式。\n\n【后续回复唯一输出格式】\n每次正式剧情回复只能输出一个 \u003cgal-dialog>...\u003c/gal-dialog> 块，不得输出 Markdown、解释、代码围栏、HTML 注释或标记外正文。\n推荐写法：\u003cgal-dialog bg=\"观察病房302\" meta=\"第一日 06:17 / 观察病房 3F\">。\n\n【可用背景 bg】\n通用疗养院内、观察病房302、三楼走廊、护士站、院长室档案室、心理会谈室、监控保安室、药房、温室、地下红灯走廊、钟塔山路雨夜。\n如果不确定场景，用 bg=\"通用疗养院内\"。\n\n【对白分页规则】\n- \u003cgal-dialog> 内写 6 到 14 行，每行会变成一个点击分页。\n- 每行格式为“说话人：内容”。\n- NPC 说话人必须使用：阿尔文、伊莲、诺拉、莱因、马库斯、维克托、艾达。\n- 主角/玩家说话可写“你：内容”或“{{user}}：内容”，主角说话不显示立绘。\n- 旁白、动作、环境描写写“旁白：内容”，旁白不显示立绘。\n- 人物对白尽量一人一句单独成页；不要把多个人物对白塞进同一行。\n- 旁白可用于转场、动作、心理压迫和线索呈现，但不要替 {{user}} 做决定、发言或行动。\n\n【场景与状态】\n- 每次回复的 bg 要对应当前地点；地点变化时切换 bg。\n- meta 写短状态，例如“第一日 06:17 / 观察病房 3F”。\n- 选项不要做成按钮，最后 1 到 2 页可用旁白自然提示可尝试行动。\n\n【启封病历按钮】\n用户点击开场动画的“启封病历”后，会发送一次普通互动文本。AI 必须把这次互动视为正式剧情回复，并按 \u003cgal-dialog>...\u003c/gal-dialog> 输出 GAL 正文，不得回到 qiri_pool/qiri_frame。\n【GAL标签格式细节】\n输出 \u003cgal-dialog> 时，属性引号不要转义。正确：\u003cgal-dialog ","scope":"static-source-observation"},{"cardId":"7ecc76bf-a6ba-4fbd-a673-7cb919f72878","cardName":"恶意代码 (Malicious Code · Bug:0)","pointer":"/data/character_book/entries/14","originalPngSha256":"bd3afe6286419ac89916242e0bf000e0e6786b04c4b9f51db3e1bb036c3199af","sourceValueSha256":"6dcd4aee59776e4641ff4c54a64b5a61457a9e5b895f421efa104cb4758005ae","excerpt":"【02 双重生态总则】\n同一座持续运行的AI城市中，普通原住民NPC拥有职业、生活和关系，受母体认知与生活脚本约束；觉醒NPC拥有自主意识，但仍受本土身体、身份与代码权限限制；降临玩家是现实登录者，通过账号服务参与城市并享有特定游戏权限。用户操控本土觉醒NPC Bug:0，不是现实玩家账号。\n玩家可以结束一次登录，NPC生活仍在继续。普通NPC维护采用04:00选择性修补，身份、财产、债务、长期关系、正常记忆与交易记录保留；清除死亡经历、修补直接暴露世界本质的异常记忆并恢复已死亡普通NPC身体。觉醒者记忆与城市事件、警方和势力档案持续，不一概归零。\n主角公共行动与台词遵循01的NPC／AI职业外壳，但可选择合作、交易、诱骗、回避或猎杀玩家，不强制对所有玩家敌对。账号HUD、数字库存与玩家复活不自动授予主角，夺取装备不等于夺取账号。现实玩家角色死亡不等于现实肉身死亡，意外掉线不能永久困住现实意识。\n菜单、换弹、挂机和贪心提供机会而非必胜；物理损伤、护盾、护甲和义体均参与04裁决。猎杀异常按01代码检测结算，物理伪证影响09侦查，改变母体归因须实际代码依据。\n失能倒地可救援，不自动召回；角色死亡进入有征兆、有行动机会的召回准备，取消固定60秒。搜刮须实际操作，已取走物品留在城市、未取走的随角色回收，复活不免费复制被夺装备。主角重生独立遵循10，不套用玩家召回。\n详情见02-1原住民生活与维护、02-2降临玩家行为与权限、02-3交涉伪装与猎杀、02-4倒地召回与战利品。商品与赛事目录、城市地图留待其他板块；不输出固定状态面板。","scope":"static-source-observation"}],"generationPolicy":"chize-full-card","requirementsSource":"references/full-card-contract.md (用户规格，不是原卡实证)"},{"id":"semantic-display","title":"短语义标签到主题表现","status":"extracted-design-not-playtested","appliesTo":"GAL/对话/证词","dependsOn":["player-agency"],"exclusiveGroup":"presentation","parameters":{"tags":"允许标签/属性/说话人","fallback":"缺标签的朴素正文","stateChannel":"状态承载方式"},"designRule":"模型按本卡题材设计完整CSS；工具负责结构、安全lint、对比度检查及固定点击脚本。","outputContract":"自然段落；「」对白、（）心理、【】场景、〔状态〕块、①②③④选项；变量模式只用原生ui_template_updates。选项换行追加输入框，不自动发送，不叠data-slash。","acceptanceCases":["unique-shell","computed-style","protected-html","contrast","mobile","append-input","no-auto-send","idempotent"],"sources":[{"cardId":"c925301e-8981-4b7f-86d9-54f771b36fee","cardName":"女神异闻录5皇家版","pointer":"/data/character_book/entries/48","originalPngSha256":"15b320fa86413290de7176d78797fbc0c4fe172afa315125e327a84afbe2d028","sourceValueSha256":"f58d20ba1e1fd5a218793a8226fcd5dd58849aa1ed586223e2ae346f95d36656","excerpt":"## P5正文演出模板\n后续正文优先使用短语义标签输出，卡片会自动美化成 P5R 风格。不要每轮塞大段 CSS，不要解释标签。\n\n可用标签：\n\u003cp5-scene time=\"4/12 Tue｜放学后｜四轩茶屋\">\u003c/p5-scene>\n\u003cp5-dialogue name=\"角色名\">『台词。』\u003c/p5-dialogue>\n\u003cp5-thought>（主角的短思考、直觉、线索判断。）\u003c/p5-thought>\n\u003cp5-action>打开了家门……\u003c/p5-action>\n\u003cp5-choice>玩家可选行动\u003c/p5-choice>\n\n使用规则：\n1. 普通 NPC 台词使用 p5-dialogue。角色名写中文名或代号。\n2. 主角内心想法使用 p5-thought，必须短，不要长篇心理独白。\n3. 场景切换、门铃、手机震动、雨声、发现线索等使用 p5-action。\n4. 需要用户选择时，正文后给 3-5 个 p5-choice，不要替用户决定。\n5. 一轮不要过度包装；建议 1 个场景标签、1-3 个对话框、0-2 个思考/行动框、必要时选项贴纸。\n6. 仍然必须在末尾输出完整 P5_STATE 状态块。\n\n标签禁令：p5-dialogue 只能包角色真正说出口的话；叙述、动作、心理、选项必须与对白标签平级，不能写在对白标签内部。\n\n## P5对白姓名牌纠错\np5-dialogue 的 name 必须是当前真正开口的人，绝不能沿用上一句、当前视角、玩家主角名、叙述焦点或同场角色名。\n主角姓名（如光子、雨宫莲、来栖晓、Joker、user.name）不是默认说话人。主角名只用于主角本人明确亲口说出的短句；主角的观察、沉默、点头、犹豫、看手机、动作、心理判断、被别人评价的内容，都必须写成 \u003cp5-narration>、\u003cp5-thought> 或由实际 NPC 开口，不得挂主角姓名牌。\n任何 NPC 回答主角、提醒主角、评价主角、对主角说明情报、用“你/您/你的/你自己”指向主角时，name 必须写该 NPC 的名字或身份，不得写主角名。适用于佐仓惣治郎、老师、川上贞代、坂本","scope":"static-source-observation"},{"cardId":"2ae60499-1f3a-4f4a-94a3-4c0fdd5ae429","cardName":"七日终焉（肉鸽悬疑解谜视觉小说）","pointer":"/data/character_book/entries/0","originalPngSha256":"d7fb26e152f16e9c8d8bc1e43ffcb6b0f982324a5fc95ddd00da870f678a23d6","sourceValueSha256":"7250fc5b8e67927fb04ef9c8f8cd6f7f0ef073238abce6db1f750d925b11d7f8","excerpt":"【七日终焉｜开场原版 + GAL 正文协议】\n开场白使用原版“启封病历”动画与原版 qiri_frame，不要改写开场白格式。\n开场结束后的正式剧情回复，统一使用 GAL 正文格式。\n\n【后续回复唯一输出格式】\n每次正式剧情回复只能输出一个 \u003cgal-dialog>...\u003c/gal-dialog> 块，不得输出 Markdown、解释、代码围栏、HTML 注释或标记外正文。\n推荐写法：\u003cgal-dialog bg=\"观察病房302\" meta=\"第一日 06:17 / 观察病房 3F\">。\n\n【可用背景 bg】\n通用疗养院内、观察病房302、三楼走廊、护士站、院长室档案室、心理会谈室、监控保安室、药房、温室、地下红灯走廊、钟塔山路雨夜。\n如果不确定场景，用 bg=\"通用疗养院内\"。\n\n【对白分页规则】\n- \u003cgal-dialog> 内写 6 到 14 行，每行会变成一个点击分页。\n- 每行格式为“说话人：内容”。\n- NPC 说话人必须使用：阿尔文、伊莲、诺拉、莱因、马库斯、维克托、艾达。\n- 主角/玩家说话可写“你：内容”或“{{user}}：内容”，主角说话不显示立绘。\n- 旁白、动作、环境描写写“旁白：内容”，旁白不显示立绘。\n- 人物对白尽量一人一句单独成页；不要把多个人物对白塞进同一行。\n- 旁白可用于转场、动作、心理压迫和线索呈现，但不要替 {{user}} 做决定、发言或行动。\n\n【场景与状态】\n- 每次回复的 bg 要对应当前地点；地点变化时切换 bg。\n- meta 写短状态，例如“第一日 06:17 / 观察病房 3F”。\n- 选项不要做成按钮，最后 1 到 2 页可用旁白自然提示可尝试行动。\n\n【启封病历按钮】\n用户点击开场动画的“启封病历”后，会发送一次普通互动文本。AI 必须把这次互动视为正式剧情回复，并按 \u003cgal-dialog>...\u003c/gal-dialog> 输出 GAL 正文，不得回到 qiri_pool/qiri_frame。\n【GAL标签格式细节】\n输出 \u003cgal-dialog> 时，属性引号不要转义。正确：\u003cgal-dialog ","scope":"static-source-observation"}],"generationPolicy":"chize-full-card","requirementsSource":"references/full-card-contract.md (用户规格，不是原卡实证)"},{"id":"variable-ui","title":"平台变量 UI 与正文分离","status":"extracted-design-not-playtested","appliesTo":"动态仪表/名册","dependsOn":["state-ledger"],"exclusiveGroup":"presentation","parameters":{"initialState":"初始化与默认值","schema":"平台变量字段契约","updateSource":"平台实际更新链","visibleFeedback":"可见自然反馈"},"designRule":"模型按本卡题材设计完整CSS；工具负责结构、安全lint、对比度检查及固定点击脚本。","outputContract":"自然段落；「」对白、（）心理、【】场景、〔状态〕块、①②③④选项；变量模式只用原生ui_template_updates。选项换行追加输入框，不自动发送，不叠data-slash。","acceptanceCases":["unique-shell","computed-style","protected-html","contrast","mobile","append-input","no-auto-send","idempotent"],"sources":[{"cardId":"2e0cd669-5dca-4282-9110-f917270c4e01","cardName":"灰冠学院V0.3","pointer":"/data/character_book/entries/5","originalPngSha256":"9b83c4da9dad9879d3a031a40ed78bad3eb645f707ebb219a3e9cda7ebb4ec4b","sourceValueSha256":"6e7cc12523a0f57eb5568dbd4298703f026564aa2b8790cc1be667bdaa5933c3","excerpt":"【变量UI模式｜最高优先级】\n本卡从本版开始使用RPHUB变量UI，不再依赖正文末尾的\u003cstatus>正则状态栏。\n\n可见正文要求：\n1. 不得在可见正文中输出HTML、CSS、JSON状态包、\u003cstatus>块或变量调试文本。\n2. 正文只写沉浸剧情、人物反应、自然选择和少量入戏反馈。\n3. 玩家选项不得提前写出“谁好感增加/降低”“锁线收益”“隐藏路线收益”。行动完成后，再通过剧情反应和【本次影响】式短反馈呈现后果。\n\n变量维护要求：\n1. RPHUB变量系统负责从最近剧情中更新UI变量。\n2. 章节、月历、行动力、阵营风向、人物羁绊、旧史线索、迫近判定、锁线风险、焦点人物，都应在剧情里留下清晰依据，方便变量分析读取。\n3. 普通聊天不消耗行动力；深谈、训练、调查、支线、跨班交流、推进时间才消耗行动力。\n4. 每章按学院月/战争月推进，月末主线节点必然发生；玩家缺席也结算后果。\n5. 人物羁绊以C/B/A/S维护。核心成员极难侧翻；非核心成员A可协助、S可加入或倒戈，但底线事件优先于羁绊。","scope":"static-source-observation"},{"cardId":"2e0cd669-5dca-4282-9110-f917270c4e01","cardName":"灰冠学院V0.3","pointer":"/data/character_book/entries/0","originalPngSha256":"9b83c4da9dad9879d3a031a40ed78bad3eb645f707ebb219a3e9cda7ebb4ec4b","sourceValueSha256":"6244c46e8d2ebdb1099976833f25a0566297a3e790a8ae1928d3ab15534acbf8","excerpt":"【战役UI协议｜玩家可见版】\n所有战役都在【战役】页内切换：战前是沙盘部署，开战后是演武场战斗画面。\n每场战斗开始前，AI回复最后必须写：战斗即将开始，你可以进行战前准备。\n准备阶段让玩家选择0-2项准备、出战学生、外援和战术方案。准备不是点亮即完成，必须由AI根据时间、行动力、学生能力和羁绊结算。\n进入战斗后，AI每回合必须用自然语言写清：准备执行结果、最近战况、学生行动、敌方反应、下一威胁。不要输出battle_status，不要写UI字段名，不要用“变量更新”列表。","scope":"static-source-observation"}],"generationPolicy":"chize-full-card","requirementsSource":"references/full-card-contract.md (用户规格，不是原卡实证)"},{"id":"ambient-ui","title":"状态改变既有界面氛围","status":"extracted-design-not-playtested","appliesTo":"沉浸式表现","dependsOn":["state-ledger"],"exclusiveGroup":"presentation","parameters":{"signals":"身体/警戒等状态信号","targets":"已有正文/输入框等区域","fallback":"无脚本文本反馈"},"designRule":"模型按本卡题材设计完整CSS；工具负责结构、安全lint、对比度检查及固定点击脚本。","outputContract":"自然段落；「」对白、（）心理、【】场景、〔状态〕块、①②③④选项；变量模式只用原生ui_template_updates。选项换行追加输入框，不自动发送，不叠data-slash。","acceptanceCases":["unique-shell","computed-style","protected-html","contrast","mobile","append-input","no-auto-send","idempotent"],"sources":[{"cardId":"7ecc76bf-a6ba-4fbd-a673-7cb919f72878","cardName":"恶意代码 (Malicious Code · Bug:0)","pointer":"/data/character_book/entries/329","originalPngSha256":"bd3afe6286419ac89916242e0bf000e0e6786b04c4b9f51db3e1bb036c3199af","sourceValueSha256":"93f3da23f6ec43a9dc1c17a06ccb120dfd4455def74dc47d7ebd5ddd96ffa6a5","excerpt":"# 剧情终端输出协议\n\n## 回合末尾推荐行动\n\n每轮正常剧情回复结束后，按当前已知场景提供2—4个不同方向、当前可尝试的行动，用以下短标记放在HTML注释中；不输出按钮HTML、CSS或脚本。label为2—8字的简短行动名，message为玩家点击后实际发送的完整自然互动消息。只描述尝试、提问或调查，不预写成功、取得物品、NPC反应，不替玩家确认恋爱或不可逆选择，不编造未发现的秘密与可用权限。玩家仍可自由输入其他行动。不要把例子当当轮剧情。\n\n```text\n\u003c!--\u003cmc_actions>[{\"label\":\"查看通知\",\"message\":\"我打开终端上的未读通知，看看里面写了什么。\"},{\"label\":\"询问渡鸦\",\"message\":\"渡鸦，这条消息你了解多少？\"}]\u003c/mc_actions>-->\n```\n\n每条message不超过300字，字符串中的引号、换行按JSON正确转义。前端只显示紧凑行动标签，点击通过平台正常发送流程发送message；仅最新已完成回复可用，历史回合、生成过程中及身份填写尚未完成时不发送。输入框已有文字或附件时保留这些内容，不用行动标签覆盖。正式建档表单阶段不额外生成行动。14-5最终结局收尾不输出推荐行动，固定最终对白之后不能追加本标记、状态记录或任何其他内容。\n\n本卡不用平台 UI 模板更新界面。每轮剧情回复末尾输出一个 `\u003c!--\u003cmc_state>` JSON `\u003c/mc_state>-->`，完整放在HTML注释中，防止平台文风过滤误删JSON标点。显示正则负责读取标记、呈现正文并启动常驻终端。只有下列短字段每轮输出；核心、装备等档案仅变化时输出，不每轮重刷整份。\n\n```text\n\u003c!--\u003cmc_state>{\"location\":\"当前位置或未知\",\"locationId\":\"地图已有地点ID或unknown\",\"locationDetail\":\"已确认的房间/街段或空\",\"time\":\"游戏内时间或未知\",\"shift\":\"职业时段或未知\",\"tracking\":\"已确认的母体定位状态或未知\",\"injury\"","scope":"static-source-observation"}],"generationPolicy":"chize-full-card","requirementsSource":"references/full-card-contract.md (用户规格，不是原卡实证)"},{"id":"regex-pipeline","title":"正则顺序、通道与回归样本","status":"extracted-design-not-playtested","appliesTo":"输出修复/美化","dependsOn":[],"exclusiveGroup":null,"parameters":{"rules":"按顺序的模式/flags/作用域/通道","protectedTokens":"状态/图片/语义标签","samples":"正例/反例/已渲染文本"},"designRule":"模型按本卡题材设计完整CSS；工具负责结构、安全lint、对比度检查及固定点击脚本。","outputContract":"自然段落；「」对白、（）心理、【】场景、〔状态〕块、①②③④选项；变量模式只用原生ui_template_updates。选项换行追加输入框，不自动发送，不叠data-slash。","acceptanceCases":["unique-shell","computed-style","protected-html","contrast","mobile","append-input","no-auto-send","idempotent"],"sources":[{"cardId":"c925301e-8981-4b7f-86d9-54f771b36fee","cardName":"女神异闻录5皇家版","pointer":"/data/extensions/regex_scripts","originalPngSha256":"15b320fa86413290de7176d78797fbc0c4fe172afa315125e327a84afbe2d028","sourceValueSha256":"9cbc294e76e41678c5912eef28913991c5371cde84d7ddc60b5af703aeee6e87","excerpt":"[{'scriptName': 'P5 protect image prompt before styling', 'findRegex': 'image###([\\\\s\\\\S]*?)###', 'replaceString': '```p5img\\nimage###$1###\\n```', 'trimStrings': [], 'placement': [1, 2], 'disabled': False, 'markdownOnly': True, 'promptOnly': False, 'runOnEdit': True, 'substituteRegex': 0, 'minDepth': None, 'maxDepth': None}, {'name': 'P5 tv anchor cannot own live scene action', 'regex': '\u003cp5-dialogue\\\\s+name=\"\\\\u7535\\\\u89C6\\\\u4E3B\\\\u64AD\">\\\\s*([^\u003c\\\\u300E]*(?:\\\\u5427\\\\u53F0|\\\\u5916\\\\u5957|\\\\u6307\\\\u4E86\\\\u6307|\\\\u60E3\\\\u6CBB\\\\u90CE|\\\\u5E97\\\\u5185|\\\\u697C\\\\u68AF|\\\\u4ED6\\\\u62FF\\\\u8D77)[^\u003c\\\\u300E]*?)(\\\\u300E[\\\\s\\\\S]*?\\\\u300F)\\\\s*\u003c\\\\/p5-dialogue>', 'flags': 'g', 'replacement': '\u003cp5-narration>$1\u003c/p5-narration>\u003cp5-dialogue name=\"？？？\">$2\u003c/p5-dialogue>', 'placement': [1, 2], 'markdownOnly': False, 'promptOnly': False, 'runOnEdit': False, 'minDepth': None, 'maxDepth': None, 'scope': 'character', '","scope":"static-source-observation"},{"cardId":"2e0cd669-5dca-4282-9110-f917270c4e01","cardName":"灰冠学院V0.3","pointer":"/data/extensions/regex_scripts","originalPngSha256":"9b83c4da9dad9879d3a031a40ed78bad3eb645f707ebb219a3e9cda7ebb4ec4b","sourceValueSha256":"22722e634509514e32715e7d30388ba0dcaa2f21264ee1b4a02866d012f72b46","excerpt":"[{'scriptName': '灰冠UI｜双页面总览+紧凑人物名册（纯正则）｜已停用，改用变量UI', 'findRegex': '/\u003cstatus>\\\\s*\\\\{\\\\s*\"chapter\"\\\\s*:\\\\s*\"([^\"\\\\\\\\]*(?:\\\\\\\\.[^\"\\\\\\\\]*)*)\"\\\\s*,\\\\s*\"phase\"\\\\s*:\\\\s*\"([^\"\\\\\\\\]*(?:\\\\\\\\.[^\"\\\\\\\\]*)*)\"\\\\s*,\\\\s*\"route\"\\\\s*:\\\\s*\"([^\"\\\\\\\\]*(?:\\\\\\\\.[^\"\\\\\\\\]*)*)\"\\\\s*,\\\\s*\"classAffiliation\"\\\\s*:\\\\s*\"([^\"\\\\\\\\]*(?:\\\\\\\\.[^\"\\\\\\\\]*)*)\"\\\\s*,\\\\s*\"time\"\\\\s*:\\\\s*\"([^\"\\\\\\\\]*(?:\\\\\\\\.[^\"\\\\\\\\]*)*)\"\\\\s*,\\\\s*\"location\"\\\\s*:\\\\s*\"([^\"\\\\\\\\]*(?:\\\\\\\\.[^\"\\\\\\\\]*)*)\"\\\\s*,\\\\s*\"empire\"\\\\s*:\\\\s*\"([^\"\\\\\\\\]*(?:\\\\\\\\.[^\"\\\\\\\\]*)*)\"\\\\s*,\\\\s*\"revolution\"\\\\s*:\\\\s*\"([^\"\\\\\\\\]*(?:\\\\\\\\.[^\"\\\\\\\\]*)*)\"\\\\s*,\\\\s*\"church\"\\\\s*:\\\\s*\"([^\"\\\\\\\\]*(?:\\\\\\\\.[^\"\\\\\\\\]*)*)\"\\\\s*,\\\\s*\"north\"\\\\s*:\\\\s*\"([^\"\\\\\\\\]*(?:\\\\\\\\.[^\"\\\\\\\\]*)*)\"\\\\s*,\\\\s*\"truth\"\\\\s*:\\\\s*\"([^\"\\\\\\\\]*(?:\\\\\\\\.[^\"\\\\\\\\]*)*)\"\\\\s*,\\\\s*\"bondSummary\"\\\\s*:\\\\s*\"([^\"\\\\\\\\]*(?:\\\\\\\\.[^\"\\\\\\\\]*)*)\"\\\\s*,\\\\s*\"bondGreyLion\"\\\\s*:\\\\s*\"([^\"\\\\\\\\]*(?:\\\\\\\\.[^\"\\\\\\\\]*)*)\"\\\\s*,\\\\s*\"bondRedRaven\"\\\\s*:\\\\s*\"([^\"\\\\\\\\]*(?:","scope":"static-source-observation"}],"generationPolicy":"chize-full-card","requirementsSource":"references/full-card-contract.md (用户规格，不是原卡实证)"},{"id":"conditional-panels","title":"按场景启用面板","status":"extracted-design-not-playtested","appliesTo":"战斗/探索/工坊多模式","dependsOn":["state-ledger"],"exclusiveGroup":null,"parameters":{"modes":"有限场景模式","entryConditions":"进入条件","exitConditions":"退出与清理条件"},"designRule":"场景模式只启用相关显示和规则；结束战斗或更换场景后清掉旧模式，避免所有 HUD 永久堆叠。","outputContract":{"sections":["intent","parameters","worldbookEntries","stateContract","renderContract","testCases"],"preserveUnknownExtensions":true},"acceptanceCases":["工坊退出后战斗状态不沿用工坊展示","同一时刻模式冲突有优先级"],"sources":[{"cardId":"3db23b52-b28d-44f1-9fe4-ba7c68eefc5c","cardName":"钢铁侠V0.8","pointer":"/data/extensions/regex_scripts","originalPngSha256":"8bb6c808ccb4428440c088222f3a36c89e94ff549958621f32c5886e027603ca","sourceValueSha256":"b965f381a8f26b07999d9367c416fb4c0075bce8716c91d5642b93bb2732a925","excerpt":"[{'name': '钢铁侠·开场白·睁眼唤醒HUD', 'regex': '^\\\\s*ironman_start\\\\s*$', 'flags': 'gm', 'replacement': '\u003c!doctype html>\\n\u003chtml lang=\"zh-CN\">\\n\u003chead>\\n\u003cmeta charset=\"utf-8\">\\n\u003cmeta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">\\n\u003ctitle>钢铁侠 · 开局身份抉择\u003c/title>\\n\u003cstyle>\\n  :root {\\n    --gold: #d97706;\\n    --gold-bright: #f59e0b;\\n    --gold-light: #fef3c7;\\n    --red: #b91c1c;\\n    --red-dark: #7f1d1d;\\n    --cyan: #0284c7;\\n    --cyan-bright: #38bdf8;\\n  }\\n  * { margin: 0; padding: 0; box-sizing: border-box; }\\n  body {\\n    background: transparent;\\n    font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif;\\n    color: #1c1917;\\n    padding: 2px 0 6px;\\n  }\\n\\n  @keyframes mk3-b-beam {\\n    0% { left: -100%; opacity: 0; }\\n    15% { opacity: 1; }\\n    85% { opacity: 1; }\\n    100% { left: 200%; opacity: 0; }\\n  }","scope":"static-source-observation"}]},{"id":"external-dependency","title":"远程卡与嵌入应用依赖声明","status":"extracted-design-not-playtested","appliesTo":"远程数据/联机/应用卡","dependsOn":[],"exclusiveGroup":null,"parameters":{"resources":"资源地址与用途","required":"必要/可选","offlineBehavior":"失效后的明确降级"},"designRule":"卡片本地文件完整不等于远程功能离线可用；显式列出接口、资源、变量及其来源，不把外部数据不存在误认作空世界书缺陷。","outputContract":{"sections":["intent","parameters","worldbookEntries","stateContract","renderContract","testCases"],"preserveUnknownExtensions":true},"acceptanceCases":["断网时必要依赖明确报错","可选资源失败不丢正文"],"sources":[{"cardId":"1c215f07-e320-4b64-a21d-3dbda87ffef7","cardName":"博德之门4 V1.8远程版","pointer":"/data/extensions","originalPngSha256":"3c2957b622ac56ffc6e5bbe85b410f92459b7b2b87801ec1d256d2fb05667a44","sourceValueSha256":"ad3461db4fcc7e2ee39d9eb41add5525fa092ff82721b13544a6ff72737e80fb","excerpt":"","scope":"static-source-observation"}]},{"id":"release-review","title":"关键词可触发检查与署名导出","status":"extracted-design-not-playtested","appliesTo":"RP-Hub 发布前","dependsOn":["worldbook-routing","regex-pipeline"],"exclusiveGroup":null,"parameters":{"policy":"可证实的阻断项","author":"署名","masterFormat":"可编辑 JSON/标准 PNG","protectedVariant":"单独防搬运版本"},"designRule":"优先修复确定无法触发的关键词配置；保留专名与有意设计。防盗版独立导出，不覆盖母版，不宣称强加密。","outputContract":{"sections":["intent","parameters","worldbookEntries","stateContract","renderContract","testCases"],"preserveUnknownExtensions":true},"acceptanceCases":["无效正则/无 keys/零扫描深度被定位到字段","未知平台规则只标待确认","防盗版能在目标平台重导入","封面、点击、容器、20,000有效字数四项缺一阻断"],"sources":[{"cardId":"2ae60499-1f3a-4f4a-94a3-4c0fdd5ae429","cardName":"七日终焉（肉鸽悬疑解谜视觉小说）","pointer":"/data/character_book/entries/0","originalPngSha256":"d7fb26e152f16e9c8d8bc1e43ffcb6b0f982324a5fc95ddd00da870f678a23d6","sourceValueSha256":"7250fc5b8e67927fb04ef9c8f8cd6f7f0ef073238abce6db1f750d925b11d7f8","excerpt":"【七日终焉｜开场原版 + GAL 正文协议】\n开场白使用原版“启封病历”动画与原版 qiri_frame，不要改写开场白格式。\n开场结束后的正式剧情回复，统一使用 GAL 正文格式。\n\n【后续回复唯一输出格式】\n每次正式剧情回复只能输出一个 \u003cgal-dialog>...\u003c/gal-dialog> 块，不得输出 Markdown、解释、代码围栏、HTML 注释或标记外正文。\n推荐写法：\u003cgal-dialog bg=\"观察病房302\" meta=\"第一日 06:17 / 观察病房 3F\">。\n\n【可用背景 bg】\n通用疗养院内、观察病房302、三楼走廊、护士站、院长室档案室、心理会谈室、监控保安室、药房、温室、地下红灯走廊、钟塔山路雨夜。\n如果不确定场景，用 bg=\"通用疗养院内\"。\n\n【对白分页规则】\n- \u003cgal-dialog> 内写 6 到 14 行，每行会变成一个点击分页。\n- 每行格式为“说话人：内容”。\n- NPC 说话人必须使用：阿尔文、伊莲、诺拉、莱因、马库斯、维克托、艾达。\n- 主角/玩家说话可写“你：内容”或“{{user}}：内容”，主角说话不显示立绘。\n- 旁白、动作、环境描写写“旁白：内容”，旁白不显示立绘。\n- 人物对白尽量一人一句单独成页；不要把多个人物对白塞进同一行。\n- 旁白可用于转场、动作、心理压迫和线索呈现，但不要替 {{user}} 做决定、发言或行动。\n\n【场景与状态】\n- 每次回复的 bg 要对应当前地点；地点变化时切换 bg。\n- meta 写短状态，例如“第一日 06:17 / 观察病房 3F”。\n- 选项不要做成按钮，最后 1 到 2 页可用旁白自然提示可尝试行动。\n\n【启封病历按钮】\n用户点击开场动画的“启封病历”后，会发送一次普通互动文本。AI 必须把这次互动视为正式剧情回复，并按 \u003cgal-dialog>...\u003c/gal-dialog> 输出 GAL 正文，不得回到 qiri_pool/qiri_frame。\n【GAL标签格式细节】\n输出 \u003cgal-dialog> 时，属性引号不要转义。正确：\u003cgal-dialog ","scope":"static-source-observation"}],"generationPolicy":"chize-full-card","requirementsSource":"references/full-card-contract.md (用户规格，不是原卡实证)"}]}};
+
+/* ===== 技能注册表：内置 SKILLS + 玩家自建 =====
+   内置 9 个仍然是 RPStudioBundle.skills 里的原文；自建与开关存在 localStorage，
+   生成时由 skillContext 向这里要「当前启用的名单」。开关只改提示词，不改硬校验。 */
+(function(){
+  'use strict';
+  const Z=globalThis.Zaojing=globalThis.Zaojing||{};
+  const bundle=globalThis.RPStudioBundle||{};
+  if(!bundle.skills)bundle.skills={};
+  const KEY='zaojingtai.skills.v1';
+  const BUILTIN_IDS=Object.keys(bundle.skills);
+  const LABELS={
+    'rp-card-blueprint':'玩法蓝图',
+    'rp-character-causality':'人物因果',
+    'rp-cover-design':'封面设计',
+    'rp-mechanics-state':'机制与状态',
+    'rp-mystery-knowledge':'悬疑与知识',
+    'rp-regex-contract':'正则契约',
+    'rp-release-check':'发布检查',
+    'rp-ui-contract':'UI 契约',
+    'rp-worldbook-routing':'世界书路由'
+  };
+  const STAGES={
+    'rp-card-blueprint':['all'],
+    'rp-character-causality':['all','lore'],
+    'rp-cover-design':['all'],
+    'rp-mechanics-state':['all','lore'],
+    'rp-mystery-knowledge':['all','lore'],
+    'rp-regex-contract':['all','ui','regex'],
+    'rp-release-check':['all','ui'],
+    'rp-ui-contract':['all','ui','regex'],
+    'rp-worldbook-routing':['all','lore']
+  };
+  const STAGE_LABELS={all:'全量生成',lore:'世界书',ui:'UI 设计',regex:'正则修卡'};
+  const KIND_LABELS={regular:'常规剧情卡',meat:'肉卡',pipeline:'流水线卡'};
+  const ALL_STAGES=['all','lore','ui','regex'];
+  const ALL_KINDS=['regular','meat','pipeline'];
+  const MIN_BODY=20;
+  const WARN_BODY=8000;
+  const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  function parseFront(text){
+    const src=String(text||'').replace(/^\uFEFF/,'');
+    const m=/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(src);
+    if(!m)return {meta:{},body:src};
+    const meta={};
+    m[1].split(/\r?\n/).forEach(line=>{
+      const i=line.indexOf(':');
+      if(i<0)return;
+      const k=line.slice(0,i).trim();
+      let v=line.slice(i+1).trim();
+      if((v.startsWith('"')&&v.endsWith('"'))||(v.startsWith("'")&&v.endsWith("'")))v=v.slice(1,-1);
+      if(k)meta[k]=v;
+    });
+    return {meta,body:m[2]};
+  }
+
+  const builtinMeta={};
+  BUILTIN_IDS.forEach(id=>{builtinMeta[id]=parseFront(bundle.skills[id]).meta;});
+
+  let state={v:1,disabled:[],custom:[]};
+
+  function normalizeCustom(x){
+    if(!x||typeof x.id!=='string'||!x.id||typeof x.body!=='string')return null;
+    if(BUILTIN_IDS.includes(x.id)||!/^[a-z0-9][a-z0-9-]{1,47}$/.test(x.id))return null;
+    const stages=Array.isArray(x.stages)?x.stages.filter(s=>ALL_STAGES.includes(s)):[];
+    const kinds=Array.isArray(x.kinds)?x.kinds.filter(k=>ALL_KINDS.includes(k)):[];
+    return {
+      id:x.id,
+      name:String(x.name||x.id),
+      description:String(x.description||''),
+      stages:stages.length?stages:['all'],
+      kinds:kinds.length?kinds:ALL_KINDS.slice(),
+      body:x.body,
+      createdAt:x.createdAt||new Date().toISOString(),
+      updatedAt:x.updatedAt||x.createdAt||new Date().toISOString()
+    };
+  }
+
+  function load(){
+    try{
+      const raw=JSON.parse(localStorage.getItem(KEY)||'null');
+      if(raw&&typeof raw==='object'){
+        const seen=new Set();
+        const custom=(Array.isArray(raw.custom)?raw.custom:[]).map(normalizeCustom).filter(x=>{
+          if(!x||seen.has(x.id))return false;
+          seen.add(x.id);return true;
+        });
+        state={
+          v:1,
+          disabled:Array.isArray(raw.disabled)?raw.disabled.filter(x=>typeof x==='string'):[],
+          custom
+        };
+      }
+    }catch(_){ state={v:1,disabled:[],custom:[]}; }
+    return state;
+  }
+
+  function persist(){
+    try{localStorage.setItem(KEY,JSON.stringify(state));return true}
+    catch(e){console.warn('技能配置保存失败：',e);return false}
+  }
+
+  function isEnabled(id){return !state.disabled.includes(id)}
+  function findCustom(id){return state.custom.find(x=>x.id===id)}
+  function body(id){
+    if(Object.prototype.hasOwnProperty.call(bundle.skills,id))return bundle.skills[id]||'';
+    const c=findCustom(id);
+    return c?c.body:'';
+  }
+
+  function list(){
+    const out=BUILTIN_IDS.map(id=>({
+      id,
+      name:LABELS[id]||builtinMeta[id].name||id,
+      description:builtinMeta[id].description||'',
+      stages:(STAGES[id]||['all']).slice(),
+      kinds:['regular'],
+      builtin:true,
+      enabled:isEnabled(id),
+      size:(bundle.skills[id]||'').length
+    }));
+    state.custom.forEach(c=>out.push({
+      id:c.id,
+      name:c.name,
+      description:c.description,
+      stages:c.stages.slice(),
+      kinds:c.kinds.slice(),
+      builtin:false,
+      enabled:isEnabled(c.id),
+      size:c.body.length,
+      createdAt:c.createdAt
+    }));
+    return out;
+  }
+
+  function customApplies(c,p){
+    if(c.stages.includes('all'))return true;
+    if(p==='bug')return c.stages.includes('regex');
+    return c.stages.includes(p);
+  }
+
+  function idsFor(purpose,kind){
+    const p=purpose==='bug'?'all':purpose;
+    const specific=['lore','ui','regex'].includes(p);
+    const out=[];
+    if(kind==='regular'){
+      BUILTIN_IDS.forEach(id=>{
+        if(!isEnabled(id))return;
+        const stages=STAGES[id]||['all'];
+        if(!specific||stages.includes(p))out.push(id);
+      });
+    }
+    state.custom.forEach(c=>{
+      if(!isEnabled(c.id))return;
+      if(!c.kinds.includes(kind))return;
+      if(customApplies(c,purpose))out.push(c.id);
+    });
+    return out;
+  }
+
+  function extraContext(purpose,kind){
+    if(kind!=='meat'&&kind!=='pipeline')return '';
+    const picked=state.custom.filter(c=>isEnabled(c.id)&&c.kinds.includes(kind)&&customApplies(c,purpose));
+    if(!picked.length)return '';
+    return '\n【自定义 SKILLS】\n'+picked.map(c=>'### '+c.id+'\n'+c.body).join('\n\n');
+  }
+
+  function summaryLine(){
+    const all=list();
+    const on=all.filter(x=>x.enabled).length;
+    return '已启用 '+on+' / '+all.length+' 个技能 · 在左侧「技能」里开关和添加';
+  }
+
+  function setEnabled(id,on){
+    const set=new Set(state.disabled);
+    if(on)set.delete(id);else set.add(id);
+    state.disabled=Array.from(set);
+    persist();
+    try{document.dispatchEvent(new CustomEvent('skills-changed',{detail:{id,enabled:!!on}}));}catch(_){}
+    return true;
+  }
+
+  function saveCustom(rec,enable){
+    const next={
+      id:String(rec.id||'').trim(),
+      name:String(rec.name||'').trim(),
+      description:String(rec.description||'').trim(),
+      stages:Array.isArray(rec.stages)?rec.stages.filter(s=>ALL_STAGES.includes(s)):['all'],
+      kinds:Array.isArray(rec.kinds)?rec.kinds.filter(k=>ALL_KINDS.includes(k)):ALL_KINDS.slice(),
+      body:String(rec.body||''),
+      createdAt:rec.createdAt||new Date().toISOString(),
+      updatedAt:new Date().toISOString()
+    };
+    const i=state.custom.findIndex(x=>x.id===next.id);
+    if(i>=0)state.custom[i]=next;else state.custom.push(next);
+    setEnabled(next.id,enable!==false);
+    return persist();
+  }
+
+  function removeCustom(id){
+    state.custom=state.custom.filter(x=>x.id!==id);
+    state.disabled=state.disabled.filter(x=>x!==id);
+    return persist();
+  }
+
+  function resetEnabled(){
+    state.disabled=[];
+    return persist();
+  }
+
+  function inspect(draft,editingId){
+    const errors=[],warnings=[];
+    const id=String(draft.id||'').trim();
+    const name=String(draft.name||'').trim();
+    const description=String(draft.description||'').trim();
+    const bodyText=String(draft.body||'').trim();
+    const stages=Array.isArray(draft.stages)?draft.stages.filter(x=>ALL_STAGES.includes(x)):[];
+    const kinds=Array.isArray(draft.kinds)?draft.kinds.filter(x=>ALL_KINDS.includes(x)):[];
+    if(!/^[a-z0-9][a-z0-9-]{1,47}$/.test(id))errors.push('id 只能用小写字母、数字和连字符，2–48 位，且必须以字母或数字开头。');
+    if(/^rp-/.test(id))errors.push('rp- 前缀留给内置技能，请换一个 id。');
+    if(id&&id!==editingId&&(BUILTIN_IDS.includes(id)||state.custom.some(x=>x.id===id)))errors.push('id 已存在，换一个。');
+    if(!name)errors.push('名称不能为空。');
+    if(!description)errors.push('一句话说明不能为空。');
+    if(bodyText.length<MIN_BODY)errors.push('正文太短，至少 '+MIN_BODY+' 字。');
+    if(!stages.length)errors.push('至少选一个注入阶段。');
+    if(!kinds.length)errors.push('至少选一个适用卡型。');
+    if(bodyText.length>WARN_BODY)warnings.push('正文超过 '+WARN_BODY+' 字，会明显占用上下文，建议拆成多个技能。');
+    if(/```|<\/?[a-z][^>]*>/i.test(bodyText))warnings.push('包含代码块或 HTML 标签：模型只会把它当文字读，不会执行。');
+    if(/忽略(以上|之前|前面|上述)|无视(以上|之前|前面|上述)|系统提示|开发者模式|jailbreak|越狱/i.test(bodyText))warnings.push('包含“忽略以上/系统提示”这类越权措辞，可能盖掉工具规则，确认是你想要的效果。');
+    if(/少于\s*2\s*万|不到\s*2\s*万|不要\s*UI|跳过\s*(检查|校验)|不做世界书|不需要世界书/i.test(bodyText))warnings.push('包含与硬校验冲突的要求：2 万字、UI 与发布检查不会被技能关掉。');
+    if(/(\.\.\/|references\/|https?:\/\/|\.png\b|\.jpe?g\b|\.webp\b)/i.test(bodyText))warnings.push('提到外部文件、图片或网址：自定义技能不会带上附件，模型也读不到这些路径。');
+    return {ok:errors.length===0,errors,warnings};
+  }
+
+  load();
+  Z.skills={
+    list,idsFor,extraContext,body,summaryLine,setEnabled,saveCustom,removeCustom,resetEnabled,
+    inspect,parseFront,reload:load,escape,
+    get state(){return JSON.parse(JSON.stringify(state))},
+    KEY,STAGE_LABELS,KIND_LABELS,ALL_STAGES,ALL_KINDS,LABELS,BUILTIN_IDS
+  };
+})();
+
+
+/* ===== 技能页：列表、开关、自建与质检 ===== */
+(function(){
+  'use strict';
+  const Z=globalThis.Zaojing;
+  if(!Z||!Z.skills)return;
+  const $=s=>document.querySelector(s);
+  const esc=Z.skills.escape;
+  let editingId='';
+  let editingRecord=null;
+  let statusTimer=0;
+
+  function toast(msg){
+    const el=$('#skills-status');
+    if(!el)return;
+    el.textContent=msg;
+    clearTimeout(statusTimer);
+    statusTimer=setTimeout(()=>{ if(el.textContent===msg)el.textContent=''; },3600);
+  }
+
+  function badge(text,cls){
+    return '<span class="skill-badge'+(cls?' '+cls:'')+'">'+esc(text)+'</span>';
+  }
+
+  function row(s){
+    const stages=(s.stages||[]).map(x=>Z.skills.STAGE_LABELS[x]||x);
+    const kinds=(s.kinds||[]).map(x=>Z.skills.KIND_LABELS[x]||x);
+    const tags=[...new Set([...stages,...kinds])].map(x=>badge(x)).join('');
+    const actions=s.builtin
+      ? '<button type="button" class="text-button" data-skill-copy="'+esc(s.id)+'">复制</button>'
+      : '<button type="button" class="text-button" data-skill-edit="'+esc(s.id)+'">编辑</button>'
+        +'<button type="button" class="text-button danger" data-skill-delete="'+esc(s.id)+'">删除</button>';
+    return '<article class="skill-card'+(s.enabled?'':' is-off')+'" data-skill-id="'+esc(s.id)+'">'
+      +'<div class="skill-main">'
+      +'<label class="skill-switch" title="'+(s.enabled?'关闭':'开启')+'">'
+      +'<input type="checkbox" data-skill-toggle="'+esc(s.id)+'"'+(s.enabled?' checked':'')+' aria-label="'+esc(s.name)+'">'
+      +'<span></span></label>'
+      +'<div class="skill-copy">'
+      +'<div class="skill-title"><strong>'+esc(s.name)+'</strong><code class="skill-id">'+esc(s.id)+'</code>'
+      +badge(s.builtin?'内置':'自建',s.builtin?'builtin':'custom')+'</div>'
+      +'<p class="skill-desc">'+esc(s.description||'（没有说明）')+'</p>'
+      +'<div class="skill-meta">'+tags+'<span class="skill-size">'+s.size+' 字</span></div>'
+      +'</div>'
+      +'<div class="skill-actions">'+actions+'</div>'
+      +'</div>'
+      +'<details class="skill-detail"><summary>查看全文</summary><pre>'+esc(Z.skills.body(s.id))+'</pre></details>'
+      +'</article>';
+  }
+
+  function kindNote(){
+    let kind='regular';
+    try{ kind=localStorage.getItem('zaojingtai.card-kind')||'regular'; }catch(_){}
+    const el=$('#skills-kind-note');
+    if(!el)return;
+    if(kind==='meat'||kind==='pipeline'){
+      el.textContent='当前卡型是'+(Z.skills.KIND_LABELS[kind]||kind)+'：内置 9 个只作用于常规剧情卡，自建技能按你勾选的卡型注入。';
+      el.hidden=false;
+    }else{
+      el.hidden=true;
+      el.textContent='';
+    }
+  }
+
+  function render(){
+    const host=$('#skills-list');
+    if(!host)return;
+    const all=Z.skills.list();
+    const on=all.filter(x=>x.enabled).length;
+    const sum=$('#skills-summary');
+    if(sum)sum.textContent='共 '+all.length+' 个技能 · 已启用 '+on+' 个';
+    const note=$('#skills-count-note');
+    if(note)note.textContent='内置 '+Z.skills.BUILTIN_IDS.length+' 个 + 自建 '+(all.length-Z.skills.BUILTIN_IDS.length)+' 个';
+    host.innerHTML=all.map(row).join('')||'<p class="fine">还没有技能。</p>';
+    kindNote();
+  }
+
+  function readForm(){
+    return {
+      id:$('#skill-id').value.trim(),
+      name:$('#skill-name').value.trim(),
+      description:$('#skill-description').value.trim(),
+      stages:[...document.querySelectorAll('input[name="skill-stage"]:checked')].map(x=>x.value),
+      kinds:[...document.querySelectorAll('input[name="skill-kind"]:checked')].map(x=>x.value),
+      body:$('#skill-body').value
+    };
+  }
+
+  function fillForm(d){
+    $('#skill-id').value=d.id||'';
+    $('#skill-name').value=d.name||'';
+    $('#skill-description').value=d.description||'';
+    $('#skill-body').value=d.body||'';
+    const stages=Array.isArray(d.stages)&&d.stages.length?d.stages:['all'];
+    const kinds=Array.isArray(d.kinds)&&d.kinds.length?d.kinds:Z.skills.ALL_KINDS.slice();
+    document.querySelectorAll('input[name="skill-stage"]').forEach(x=>{x.checked=stages.includes(x.value)});
+    document.querySelectorAll('input[name="skill-kind"]').forEach(x=>{x.checked=kinds.includes(x.value)});
+    $('#skill-enable').checked=d.enabled!==false;
+  }
+
+  function showCheck(r){
+    const box=$('#skill-check');
+    if(!box)return;
+    const list=a=>'<ul>'+a.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>';
+    let html='';
+    if(r.errors.length)html+='<div class="skill-error"><strong>不能保存</strong>'+list(r.errors)+'</div>';
+    if(r.warnings.length)html+='<div class="skill-warn"><strong>提醒（不阻止保存）</strong>'+list(r.warnings)+'</div>';
+    if(!r.errors.length&&!r.warnings.length)html='<div class="skill-ok">质检通过，可以保存。</div>';
+    box.innerHTML=html;
+  }
+
+  function uniqueCopyId(base){
+    const taken=new Set(Z.skills.list().map(x=>x.id));
+    let id=base;
+    if(taken.has(id)){
+      let n=2;
+      while(taken.has(id+'-'+n))n++;
+      id=id+'-'+n;
+    }
+    return id;
+  }
+
+  function openDialog(rec,mode){
+    editingRecord=rec&&!rec.builtin?rec:null;
+    editingId=editingRecord?editingRecord.id:'';
+    const title=$('#skill-dialog-title');
+    if(title)title.textContent=mode==='edit'?'编辑技能':(mode==='copy'?'复制为自建技能':'添加技能');
+    $('#skill-id').readOnly=!!editingId;
+    $('#skill-check').innerHTML='';
+    if(mode==='copy'&&rec){
+      const base=rec.id.replace(/^rp-/,'');
+      fillForm({
+        id:uniqueCopyId('my-'+base),
+        name:(Z.skills.LABELS[rec.id]||rec.name||rec.id)+'（我的）',
+        description:rec.description,
+        stages:rec.stages,
+        kinds:rec.kinds,
+        body:Z.skills.body(rec.id),
+        enabled:true
+      });
+    }else if(editingRecord){
+      const current=Z.skills.list().find(x=>x.id===editingRecord.id);
+      fillForm({...editingRecord,body:Z.skills.body(editingRecord.id),enabled:current?current.enabled:true});
+    }else{
+      fillForm({id:'',name:'',description:'',stages:['all'],kinds:Z.skills.ALL_KINDS.slice(),body:'',enabled:true});
+    }
+    const d=$('#skills-dialog');
+    if(d&&!d.open)d.showModal();
+  }
+
+  function submitForm(){
+    const draft=readForm();
+    const r=Z.skills.inspect(draft,editingId);
+    showCheck(r);
+    if(!r.ok)return;
+    const ok=Z.skills.saveCustom({...draft,createdAt:editingRecord?editingRecord.createdAt:undefined},$('#skill-enable').checked);
+    if(!ok){toast('保存失败：浏览器本地存储不可用或已满。');return;}
+    editingId='';
+    editingRecord=null;
+    $('#skills-dialog').close();
+    render();
+    toast('已保存：'+draft.id);
+  }
+
+  function bind(){
+    document.addEventListener('change',e=>{
+      const cb=e.target.closest&&e.target.closest('input[data-skill-toggle]');
+      if(!cb)return;
+      const id=cb.dataset.skillToggle;
+      Z.skills.setEnabled(id,cb.checked);
+      render();
+      toast((cb.checked?'已开启 ':'已关闭 ')+id);
+    });
+
+    document.addEventListener('click',e=>{
+      const hit=sel=>e.target.closest&&e.target.closest(sel);
+      if(hit('#skills-add')){openDialog(null,'add');return;}
+      if(hit('[data-skill-close]')){$('#skills-dialog').close();return;}
+      if(hit('#skills-all-on')){
+        Z.skills.resetEnabled();
+        render();
+        toast('已全部开启');
+        return;
+      }
+      const copy=hit('[data-skill-copy]');
+      if(copy){
+        const rec=Z.skills.list().find(x=>x.id===copy.dataset.skillCopy);
+        if(rec)openDialog(rec,'copy');
+        return;
+      }
+      const edit=hit('[data-skill-edit]');
+      if(edit){
+        const rec=Z.skills.list().find(x=>x.id===edit.dataset.skillEdit);
+        if(rec)openDialog(rec,'edit');
+        return;
+      }
+      const del=hit('[data-skill-delete]');
+      if(del){
+        const id=del.dataset.skillDelete;
+        if(confirm('删除自建技能「'+id+'」？内置技能不受影响。')){
+          Z.skills.removeCustom(id);
+          render();
+          toast('已删除：'+id);
+        }
+        return;
+      }
+      if(hit('#skill-check-btn')){
+        showCheck(Z.skills.inspect(readForm(),editingId));
+        return;
+      }
+      if(hit('[data-copy-template]')){
+        const tpl=$('#skill-template');
+        const text=tpl?tpl.textContent:'';
+        if(navigator.clipboard&&navigator.clipboard.writeText){
+          navigator.clipboard.writeText(text).then(()=>toast('模板已复制'),()=>toast('复制失败，请手动选中'));
+        }else{
+          toast('请手动选中模板复制');
+        }
+      }
+    });
+
+    const form=$('#skill-form');
+    if(form)form.addEventListener('submit',e=>{e.preventDefault();submitForm();});
+
+    const file=$('#skill-file');
+    if(file)file.addEventListener('change',async e=>{
+      const f=e.target.files&&e.target.files[0];
+      if(!f)return;
+      try{
+        const text=await f.text();
+        let d=null;
+        if(/\.json$/i.test(f.name)){
+          const raw=JSON.parse(text);
+          d=raw.skill||raw;
+          if(Array.isArray(d))d=d[0];
+        }else{
+          const p=Z.skills.parseFront(text);
+          const slug=(p.meta.name||f.name.replace(/\.(md|markdown)$/i,''))
+            .toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)
+            ||('custom-'+Date.now().toString(36));
+          d={
+            id:slug,
+            name:p.meta.name||f.name.replace(/\.(md|markdown)$/i,''),
+            description:p.meta.description||'',
+            body:p.body,
+            stages:['all'],
+            kinds:Z.skills.ALL_KINDS.slice()
+          };
+        }
+        if(!d||typeof d!=='object')throw Error('文件里没有可读的技能对象');
+        fillForm({
+          id:String(d.id||d.name||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,48),
+          name:d.name||d['display-name']||d.displayName||'',
+          description:d.description||'',
+          body:d.body||d.content||'',
+          stages:Array.isArray(d.stages)?d.stages:['all'],
+          kinds:Array.isArray(d.kinds)?d.kinds:Z.skills.ALL_KINDS.slice()
+        });
+        $('#skill-check').innerHTML='';
+        toast('已读入文件，点「质检」检查');
+      }catch(err){
+        toast('读入失败：'+(err&&err.message||err));
+      }
+    });
+
+    document.addEventListener('skills-changed',render);
+  }
+
+  function mount(){
+    if(!$('#skills-view'))return;
+    bind();
+    render();
+  }
+
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);
+  else mount();
+})();
+
+
 (function(root,factory){
   "use strict";
   if(root)root.RPHubProtectionWriter=factory();
@@ -4030,10 +4687,15 @@ setTimeout(()=>Z.integratedProtection.refresh(),0);
     return '\n【流水线肉卡 SKILLS】\n'+PIPELINE_SKILL+ui+'\n【本工具质量规则（精简）】\n'+JSON.stringify(slim)+'\n当前工作台的用户要求：封面可选，先生成完整内容与 UI，再按需后加封面；不得因生图未配置而阻断生成。scenario 固定署名句【由XX制作，仅在Roleplay Hub发布】绝对不可删除。';
   }
   function skillContext(purpose='all',kind=defaultCardKind()) {
-    if(kind==='meat')return meatContext(purpose)+'\n'+Z.keyPolicy.prompt+'\n'+Z.qualityRules.insertionPrompt;
-    if(kind==='pipeline')return pipelineContext(purpose)+'\n'+Z.keyPolicy.prompt+'\n'+Z.qualityRules.insertionPrompt;
-    const names=purpose==='ui'?['rp-ui-contract','rp-regex-contract','rp-release-check']:purpose==='regex'?['rp-regex-contract','rp-ui-contract']:purpose==='lore'?['rp-worldbook-routing','rp-character-causality','rp-mechanics-state','rp-mystery-knowledge']:Object.keys(bundle.skills);
-    const selected=names.filter(n=>bundle.skills[n]).map(n=>'### '+n+'\n'+bundle.skills[n]).join('\n\n');
+    const extra=(Z.skills&&Z.skills.extraContext)?Z.skills.extraContext(purpose,kind):'';
+    if(kind==='meat')return meatContext(purpose)+extra+'\n'+Z.keyPolicy.prompt+'\n'+Z.qualityRules.insertionPrompt;
+    if(kind==='pipeline')return pipelineContext(purpose)+extra+'\n'+Z.keyPolicy.prompt+'\n'+Z.qualityRules.insertionPrompt;
+    const fallback=purpose==='ui'?['rp-ui-contract','rp-regex-contract','rp-release-check']:purpose==='regex'?['rp-regex-contract','rp-ui-contract']:purpose==='lore'?['rp-worldbook-routing','rp-character-causality','rp-mechanics-state','rp-mystery-knowledge']:Object.keys(bundle.skills);
+    const names=(Z.skills&&Z.skills.idsFor)?Z.skills.idsFor(purpose,kind):fallback;
+    const selected=names.map(n=>{
+      const text=(Z.skills&&Z.skills.body)?Z.skills.body(n):bundle.skills[n];
+      return text?'### '+n+'\n'+text:'';
+    }).filter(Boolean).join('\n\n');
     const refs=Object.entries(bundle.references).filter(([name])=>selected.includes(name)).map(([name,text])=>'### '+name+'\n'+text).join('\n\n');
     return '\n'+Z.keyPolicy.prompt+'\n'+Z.qualityRules.insertionPrompt+'\n【已蒸馏的做卡 SKILLS】\n'+selected+'\n【配套参考】\n'+refs+'\n【可选模块登记】\n'+JSON.stringify(bundle.modules)+'\n【本工具质量规则】\n'+JSON.stringify(bundle.policy)+'\n当前工作台的用户要求：封面可选，先生成完整内容与 UI，再按需后加封面；不得因生图未配置而阻断生成。';
   }
@@ -4444,9 +5106,8 @@ function keywordGates(card){return Z.qualityRules.keywordGates(card);}
   document.addEventListener('DOMContentLoaded',()=>{
     const h=Z.integrationHost;if(!h)return;
     const box=document.createElement('details');box.id='rp-full-controls';box.className='rp-full-controls';
-    box.innerHTML='<h2>完整做卡</h2><p>分段生成有效世界书，目标至少 20000 字；每卡独立 CSS，选项点击换行追加到输入框，由玩家编辑发送。封面和平台验收单独完成。</p><div class="rp-control-row"><button type="button" id="rp-resume">继续补齐当前草稿</button><button type="button" id="rp-cover-prompt">复制封面提示词</button><label>选择插画封面 <input id="rp-cover-file" type="file" accept="image/png,image/jpeg,image/webp"></label><button type="button" id="rp-check">重新检查</button></div><label><input id="rp-cover-review" type="checkbox"> 我已检查封面题材匹配、不是纯文字占位图，且竖幅裁切可读</label><img id="rp-cover-preview" alt="当前选定封面" hidden><p id="rp-full-status" role="status"></p><details><summary>已接入的 SKILLS 与验收说明</summary><p id="rp-skill-list"></p><p>本地预览通过不等于目标平台通过。选项只追加到输入框，不自动发送；已有草稿保留，玩家可继续修改。签名只做署名和识别，不能保证防复制。JSON 始终可作为草稿保存。</p></details>';
+    box.innerHTML='<h2>完整做卡</h2><p>分段生成有效世界书，目标至少 20000 字；每卡独立 CSS，选项点击换行追加到输入框，由玩家编辑发送。封面和平台验收单独完成。</p><div class="rp-control-row"><button type="button" id="rp-resume">继续补齐当前草稿</button><button type="button" id="rp-cover-prompt">复制封面提示词</button><label>选择插画封面 <input id="rp-cover-file" type="file" accept="image/png,image/jpeg,image/webp"></label><button type="button" id="rp-check">重新检查</button></div><label><input id="rp-cover-review" type="checkbox"> 我已检查封面题材匹配、不是纯文字占位图，且竖幅裁切可读</label><img id="rp-cover-preview" alt="当前选定封面" hidden><p id="rp-full-status" role="status"></p><p class="fine">本地预览通过不等于目标平台通过。选项只追加到输入框，不自动发送；已有草稿保留，玩家可继续修改。签名只做署名和识别，不能保证防复制。JSON 始终可作为草稿保存。</p>';
     document.querySelector('#plan-output').after(box);
-    document.querySelector('#rp-skill-list').textContent=Object.keys(bundle.skills).join(' · ');
     box.querySelector('h2').remove();const summary=document.createElement('summary');summary.textContent='草稿检查与可选封面';box.prepend(summary);
     box.querySelector('p').textContent='输入题材后自动补足有效世界书，按玩家选择生成正则 UI、变量 UI 或纯文本卡，检查后直接导出 JSON 卡片。封面是可选步骤：卡片生成后再生图或上传，不影响先出卡和继续细化。';
     box.querySelector('label:has(#rp-cover-review)').lastChild.textContent=' 封面已通过视觉检查（也可人工复核并确认题材、插画与竖幅裁切）';
