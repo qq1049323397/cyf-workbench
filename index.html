@@ -450,7 +450,7 @@ description: 一句话说明这条技能约束什么
     </header>
     <div class="skills-form-grid">
       <label class="wide">技能文件（可多选）
-        <input type="file" id="batch-files" multiple accept=".json,.md,.markdown,application/json,text/markdown">
+        <input type="file" id="batch-files" multiple accept=".json,.jsonl,.md,.markdown,application/json,text/markdown">
       </label>
       <label class="wide">或粘贴内容
         <textarea id="batch-text" rows="5" placeholder="JSON 数组 / { skills: [...] } / JSONL，或 Markdown 多技能包。解析后先预览，不会直接保存。"></textarea>
@@ -2474,7 +2474,7 @@ return {titleFindings,INSERTION_POSITIONS,entryPosition,insertionRoute,normalize
   const WORKBENCH_VERSION='1.5.2';
   /* 构建戳：由 tools/sync-site.sh 在同步时自动改写成「日期.sha」，手改这里没有意义。
      它存在的理由就是版本号看不出来的那件事——线上跑的到底是哪一次构建。 */
-  const WORKBENCH_BUILD='2026.10.20.1efecda';
+  const WORKBENCH_BUILD='2026.10.20.7c56c30';
   const WORKBENCH_RELEASE={"title":"技能批量导入","notes":["技能页新增「批量导入」：可一次选多个文件，或直接粘贴内容，解析后逐条预览再保存。","JSON 支持数组、{ skills: [...] }、{ items: [...] }、单个对象和 JSONL；Markdown 支持按 ## 标题分节，或每节用 --- 元数据块分隔。","预览里能改名称和 ID、取消勾选某条；重名可选自动加后缀、跳过或覆盖，覆盖时保留原创建时间。","默认卡型/阶段只补源文件没写的条目，显式写了的按原值保留；单条添加遇到多技能 JSON 会提示改用批量导入，不再静默丢弃。"]};
   /* 注意：工厂函数里没有 root 这个变量（root 只是外层 IIFE 的参数），必须用 globalThis。 */
   try{globalThis.Zaojing=globalThis.Zaojing||{};globalThis.Zaojing.version=WORKBENCH_VERSION;globalThis.Zaojing.build=WORKBENCH_BUILD;globalThis.Zaojing.releaseNotes=WORKBENCH_RELEASE;}catch(_){ }
@@ -3877,10 +3877,10 @@ globalThis.RPStudioBundle={"version":"0.4.0","policy":{"version":"0.4.0","id":"c
     if(!src.trim())throw Error('文件是空的');
     const split=(options&&options.split)||'auto';
     const name=String(fileName||'粘贴内容');
-    const looksJson=/\.json$/i.test(name)||/^\s*[\[{]/.test(src);
+    const looksJson=/\.(json|jsonl)$/i.test(name)||/^\s*[\[{]/.test(src);
     if(looksJson){
       try{return parseJsonPack(src,name);}
-      catch(error){if(/\.json$/i.test(name))throw error;}
+      catch(error){if(/\.(json|jsonl)$/i.test(name))throw error;}
     }
     return parseMarkdownPack(src,name,split);
   }
@@ -4454,8 +4454,6 @@ globalThis.RPStudioBundle={"version":"0.4.0","policy":{"version":"0.4.0","id":"c
     });
     const conflict=$('#batch-conflict');
     if(conflict)conflict.addEventListener('change',renderBatch);
-    const parse=$('#batch-parse');
-    if(parse)parse.addEventListener('click',parseBatch);
     const form=$('#batch-form');
     if(form)form.addEventListener('submit',event=>{event.preventDefault();importBatch();});
   }
@@ -4576,6 +4574,7 @@ globalThis.RPStudioBundle={"version":"0.4.0","policy":{"version":"0.4.0","id":"c
           const raw=JSON.parse(text);
           d=raw.skill||raw;
           if(d&&Array.isArray(d.skills))d=d.skills;
+          if(d&&Array.isArray(d.items))d=d.items;
           if(Array.isArray(d)){
             if(d.length>1)throw Error('这个文件含 '+d.length+' 条技能，请用「批量导入」。');
             d=d[0];
