@@ -325,6 +325,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   .skills-dialog input[type="checkbox"]{width:14px;height:14px;min-height:0;margin:0;padding:0;flex:0 0 auto;box-sizing:border-box}
   .skills-dialog textarea{min-height:180px;font:13px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace}
   .skills-dialog footer{flex:0 0 auto;display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:0;padding:12px 22px 18px;background:var(--surface);border-top:1px solid var(--line)}
+  #batch-summary{flex:0 0 auto;margin:0;padding:0 22px;max-height:54px;overflow:auto;line-height:1.6}
   .skill-check{font-size:13px;line-height:1.7;border-radius:10px;margin:0 22px;flex:0 0 auto}
   .skill-check:empty{display:none}
   .skill-check .skill-error{background:#f9eaea;border:1px solid #e6bcbc;color:#8b2f2f;padding:10px 12px;border-radius:10px}
@@ -332,10 +333,37 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   .skill-check .skill-ok{background:#e8f2ec;border:1px solid #b9d8c6;color:#1f5c45;padding:10px 12px;border-radius:10px}
   .skill-check ul{margin:6px 0 0;padding-left:20px}
   .skill-check li{margin:2px 0}
+  .batch-controls{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .batch-controls label{font-size:13px;font-weight:700}
+  .batch-controls select{width:100%}
+  .batch-preview{display:grid;gap:8px;padding-bottom:4px}
+  .batch-preview:empty{display:none}
+  .batch-item{border:1px solid var(--line);border-radius:12px;padding:9px 10px;background:#fbfaf6}
+  .batch-item.is-error{border-color:#e0b6b6;background:#fbf5f4}
+  .batch-item-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+  .batch-item-head label{display:inline-flex;align-items:center;gap:6px;font-weight:700;color:var(--ink)}
+  .batch-item-head .batch-size{margin-left:auto}
+  .batch-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px;margin-top:6px}
+  .batch-grid label{display:grid;gap:4px;font-size:12px;font-weight:700;color:var(--muted)}
+  .batch-grid input{width:100%;min-height:34px;padding:5px 8px;font-size:13px}
+  .batch-tags{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+  .batch-status{margin:6px 0 0;font-size:12px;line-height:1.6;color:var(--muted)}
+  .batch-status.is-ok{color:#1f5c45}
+  .batch-status.is-warn{color:#7d4a1f}
+  .batch-status.is-error{color:#8b2f2f}
+  .batch-status.is-muted{color:var(--muted)}
+  .batch-item details{margin-top:6px}
+  .batch-item summary{cursor:pointer;font-size:12px;color:var(--muted)}
+  .batch-item pre{max-height:220px;overflow:auto;margin:6px 0 0;padding:9px;border-radius:8px;background:#f1efe7;font:12px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
   @media(max-width:700px){
     .skill-main{flex-wrap:wrap}
     .skill-actions{width:100%;justify-content:flex-start;padding-left:54px}
-    .skills-form-grid{grid-template-columns:1fr}
+    .skills-form-grid{grid-template-columns:1fr;padding:12px 16px}
+    .skills-dialog header{padding:18px 16px 0}
+    .skills-dialog footer{padding:12px 16px max(14px,env(safe-area-inset-bottom))}
+    #batch-summary{padding:0 16px}
+    .skills-dialog textarea{min-height:110px;resize:none}
+    .batch-controls,.batch-grid{grid-template-columns:1fr}
   }
 </style>
 <section class="view" data-view="skills" id="skills-view">
@@ -347,6 +375,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     <div class="skills-toolbar" style="margin:0">
       <span id="skills-status" class="fine" role="status"></span>
       <button type="button" class="secondary" id="skills-all-on">全部开启</button>
+      <button type="button" class="secondary" id="skills-batch">批量导入</button>
       <button type="button" class="primary" id="skills-add">添加技能</button>
     </div>
   </div>
@@ -413,7 +442,61 @@ description: 一句话说明这条技能约束什么
   </form>
 </dialog>
 
-<section class="view" data-view="settings"><div class="section-head"><div><h1>源码与工作区</h1><p>模型负责生成，源码负责判断如何实现，工作区负责提供已有素材。</p></div></div><div class="settings-grid"><section><h2>模型 API</h2><label>接口类型<select id="api-mode"><option value="cloud">云端接口</option><option value="local">本地 / 局域网反代</option></select></label><label>接口地址<input id="api-base" value="https://cdn.sta1n.cn/v1"></label><label><span id="api-key-label">API Key</span><input id="api-key" type="password" autocomplete="off" placeholder="sk-..."></label><label>模型<input id="api-model" placeholder="例如 gpt-4.1-mini"></label><label id="api-model-manual-label" hidden>手动填写模型名<input id="api-model-manual" placeholder="填写代理实际支持的模型名" autocomplete="off"></label><p class="fine" id="api-local-help" hidden>本地模式的 Key 可留空；代理没有 /models 时可手填模型。Chrome 142+ 可能询问本地网络访问权限，请允许。其他浏览器或策略可能阻止 HTTPS 页面访问 HTTP 局域网接口，可使用离线 HTML 或 HTTPS 代理。代理必须允许本站来源（离线为 null）的 CORS，以及 Content-Type、Authorization 和 OPTIONS 预检。</p><p class="fine" id="api-base-status" role="status"></p><p class="fine" id="api-runtime-limit" hidden>无 Key 的本地接口可用于工作台 AI 功能。内嵌 RP-Hub 的模型读取、记忆功能和配置同步仍有限制，因此该接口暂不自动同步到试玩。</p><div class="stack"><button class="primary" data-action="test-api">测试连接</button><button class="secondary" data-action="save-settings">保存设置</button></div><p class="fine">使用第三方接口前，请自行确认其隐私政策与费用。</p></section><section><h2>RP-Hub 源码优先引擎</h2><p id="source-detail">正在加载内置 RP-Hub 源码索引。</p><p id="source-index-stats" class="source-index-stats"></p><div class="stack"><button class="secondary" data-action="choose-source">选择新版源码文件夹</button><button class="text-button" data-action="reset-source">恢复内置 1.8.9 源码</button></div><p class="fine">源码是 AI 判断字段、运行时、导入导出和 BUG 的最高优先级依据。所选源码只在本机分块检索，每次仅发送与当前任务相关的片段。</p><input id="source-file" type="file" accept=".js,.html,.css,.json,.md,.txt" hidden></section></div></section>
+<dialog id="skills-batch-dialog" class="skills-dialog">
+  <form id="batch-form" novalidate>
+    <header>
+      <h2>批量导入技能</h2>
+      <button type="button" class="text-button" data-batch-close>关闭</button>
+    </header>
+    <div class="skills-form-grid">
+      <label class="wide">技能文件（可多选）
+        <input type="file" id="batch-files" multiple accept=".json,.md,.markdown,application/json,text/markdown">
+      </label>
+      <label class="wide">或粘贴内容
+        <textarea id="batch-text" rows="5" placeholder="JSON 数组 / { skills: [...] } / JSONL，或 Markdown 多技能包。解析后先预览，不会直接保存。"></textarea>
+      </label>
+      <div class="wide batch-controls">
+        <label>Markdown 分节
+          <select id="batch-split">
+            <option value="auto">自动识别</option>
+            <option value="heading">按 ## 标题拆分</option>
+            <option value="single">整篇作为一条</option>
+          </select>
+        </label>
+        <label>重名处理
+          <select id="batch-conflict">
+            <option value="suffix">自动加后缀</option>
+            <option value="skip">跳过重名</option>
+            <option value="overwrite">覆盖原技能</option>
+          </select>
+        </label>
+      </div>
+      <fieldset class="wide">
+        <legend>默认作用于哪些卡型</legend>
+        <label><input type="checkbox" name="batch-kind" value="regular" checked> 常规剧情卡</label>
+        <label><input type="checkbox" name="batch-kind" value="meat" checked> 肉卡</label>
+        <label><input type="checkbox" name="batch-kind" value="pipeline" checked> 流水线卡</label>
+        <span class="field-hint">只补源文件里没写卡型的条目；写了的按原值保留。</span>
+      </fieldset>
+      <fieldset class="wide">
+        <legend>默认作用于哪些阶段</legend>
+        <label><input type="checkbox" name="batch-stage" value="all" checked> 全量生成</label>
+        <label><input type="checkbox" name="batch-stage" value="lore"> 世界书批次</label>
+        <label><input type="checkbox" name="batch-stage" value="ui"> UI 设计</label>
+        <label><input type="checkbox" name="batch-stage" value="regex"> 正则修卡</label>
+        <span class="field-hint">同样只补未指定阶段的条目；全选会覆盖所有生成阶段。</span>
+      </fieldset>
+      <label class="wide" style="display:flex;align-items:center;gap:8px;font-weight:400"><input type="checkbox" id="batch-enable" checked> 导入后立即启用</label>
+      <div id="batch-preview" class="batch-preview wide"></div>
+    </div>
+    <p id="batch-summary" class="fine" role="status">选择文件或粘贴内容后点「解析预览」。</p>
+    <footer>
+      <button type="button" class="secondary" data-batch-close>取消</button>
+      <button type="button" class="secondary" id="batch-parse">解析预览</button>
+      <button type="submit" class="primary" id="batch-import" disabled>导入</button>
+    </footer>
+  </form>
+</dialog><section class="view" data-view="settings"><div class="section-head"><div><h1>源码与工作区</h1><p>模型负责生成，源码负责判断如何实现，工作区负责提供已有素材。</p></div></div><div class="settings-grid"><section><h2>模型 API</h2><label>接口类型<select id="api-mode"><option value="cloud">云端接口</option><option value="local">本地 / 局域网反代</option></select></label><label>接口地址<input id="api-base" value="https://cdn.sta1n.cn/v1"></label><label><span id="api-key-label">API Key</span><input id="api-key" type="password" autocomplete="off" placeholder="sk-..."></label><label>模型<input id="api-model" placeholder="例如 gpt-4.1-mini"></label><label id="api-model-manual-label" hidden>手动填写模型名<input id="api-model-manual" placeholder="填写代理实际支持的模型名" autocomplete="off"></label><p class="fine" id="api-local-help" hidden>本地模式的 Key 可留空；代理没有 /models 时可手填模型。Chrome 142+ 可能询问本地网络访问权限，请允许。其他浏览器或策略可能阻止 HTTPS 页面访问 HTTP 局域网接口，可使用离线 HTML 或 HTTPS 代理。代理必须允许本站来源（离线为 null）的 CORS，以及 Content-Type、Authorization 和 OPTIONS 预检。</p><p class="fine" id="api-base-status" role="status"></p><p class="fine" id="api-runtime-limit" hidden>无 Key 的本地接口可用于工作台 AI 功能。内嵌 RP-Hub 的模型读取、记忆功能和配置同步仍有限制，因此该接口暂不自动同步到试玩。</p><div class="stack"><button class="primary" data-action="test-api">测试连接</button><button class="secondary" data-action="save-settings">保存设置</button></div><p class="fine">使用第三方接口前，请自行确认其隐私政策与费用。</p></section><section><h2>RP-Hub 源码优先引擎</h2><p id="source-detail">正在加载内置 RP-Hub 源码索引。</p><p id="source-index-stats" class="source-index-stats"></p><div class="stack"><button class="secondary" data-action="choose-source">选择新版源码文件夹</button><button class="text-button" data-action="reset-source">恢复内置 1.8.9 源码</button></div><p class="fine">源码是 AI 判断字段、运行时、导入导出和 BUG 的最高优先级依据。所选源码只在本机分块检索，每次仅发送与当前任务相关的片段。</p><input id="source-file" type="file" accept=".js,.html,.css,.json,.md,.txt" hidden></section></div></section>
 </main></div></div><div id="toast-root" class="toast-root" aria-live="polite"></div><!-- CYF_LENGTH_DIRECTIVE_START -->
 <script id="cyf-length-directive">
 /* Shared generation and validation length contract. No model calls. */
@@ -2388,11 +2471,11 @@ return {titleFindings,INSERTION_POSITIONS,entryPosition,insertionRoute,normalize
      改版本时只改这一处，然后跑 tools/package.sh 重新打包。
      格式必须严格是 x.y.z——tools/asserts/version.js 用 /^\d+\.\d+\.\d+$/ 校验，
      所以构建戳不能拼在这里，只能放下面的 WORKBENCH_BUILD。 */
-  const WORKBENCH_VERSION='1.5.1';
+  const WORKBENCH_VERSION='1.5.2';
   /* 构建戳：由 tools/sync-site.sh 在同步时自动改写成「日期.sha」，手改这里没有意义。
      它存在的理由就是版本号看不出来的那件事——线上跑的到底是哪一次构建。 */
-  const WORKBENCH_BUILD='2026.10.19.1efecda';
-  const WORKBENCH_RELEASE={"title":"技能分区与卡型选择","notes":["技能页按卡型分成四组：常规剧情卡 9 个可开关内置技能、肉卡专用方法论与 15 个写法模块、流水线专用方法论、自建技能。","肉卡/流水线方法论固定注入，不再混在通用列表里；15 个写法模块默认折叠，展开可看说明与全文。","自建技能保存时可直接勾选作用于哪些卡型；只改展示与说明，9 个通用技能仍只作用于常规卡，生成逻辑不变。"]};
+  const WORKBENCH_BUILD='2026.10.20.1efecda';
+  const WORKBENCH_RELEASE={"title":"技能批量导入","notes":["技能页新增「批量导入」：可一次选多个文件，或直接粘贴内容，解析后逐条预览再保存。","JSON 支持数组、{ skills: [...] }、{ items: [...] }、单个对象和 JSONL；Markdown 支持按 ## 标题分节，或每节用 --- 元数据块分隔。","预览里能改名称和 ID、取消勾选某条；重名可选自动加后缀、跳过或覆盖，覆盖时保留原创建时间。","默认卡型/阶段只补源文件没写的条目，显式写了的按原值保留；单条添加遇到多技能 JSON 会提示改用批量导入，不再静默丢弃。"]};
   /* 注意：工厂函数里没有 root 这个变量（root 只是外层 IIFE 的参数），必须用 globalThis。 */
   try{globalThis.Zaojing=globalThis.Zaojing||{};globalThis.Zaojing.version=WORKBENCH_VERSION;globalThis.Zaojing.build=WORKBENCH_BUILD;globalThis.Zaojing.releaseNotes=WORKBENCH_RELEASE;}catch(_){ }
   try{
@@ -3615,12 +3698,21 @@ globalThis.RPStudioBundle={"version":"0.4.0","policy":{"version":"0.4.0","id":"c
   const WARN_BODY=8000;
   const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-  function parseFront(text){
-    const src=String(text||'').replace(/^\uFEFF/,'');
-    const m=/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(src);
-    if(!m)return {meta:{},body:src};
+  const KIND_ALIASES={
+    regular:'regular','常规':'regular','常规卡':'regular','常规剧情卡':'regular','剧情卡':'regular','normal':'regular',
+    meat:'meat','肉':'meat','肉卡':'meat','erotic':'meat','nsfw':'meat',
+    pipeline:'pipeline','流水线':'pipeline','流水线卡':'pipeline','pipe':'pipeline'
+  };
+  const STAGE_ALIASES={
+    all:'all','全部':'all','全量':'all','全量生成':'all','通用':'all',
+    lore:'lore','世界书':'lore','世界书批次':'lore','worldbook':'lore',
+    ui:'ui','界面':'ui','ui设计':'ui','ui 设计':'ui',
+    regex:'regex','正则':'regex','正则修卡':'regex','修卡':'regex'
+  };
+
+  function parseMeta(text){
     const meta={};
-    m[1].split(/\r?\n/).forEach(line=>{
+    String(text||'').split(/\r?\n/).forEach(line=>{
       const i=line.indexOf(':');
       if(i<0)return;
       const k=line.slice(0,i).trim();
@@ -3628,7 +3720,169 @@ globalThis.RPStudioBundle={"version":"0.4.0","policy":{"version":"0.4.0","id":"c
       if((v.startsWith('"')&&v.endsWith('"'))||(v.startsWith("'")&&v.endsWith("'")))v=v.slice(1,-1);
       if(k)meta[k]=v;
     });
-    return {meta,body:m[2]};
+    return meta;
+  }
+
+  function parseFront(text){
+    const src=String(text||'').replace(/^\uFEFF/,'');
+    const m=/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(src);
+    if(!m)return {meta:{},body:src};
+    return {meta:parseMeta(m[1]),body:m[2]};
+  }
+
+  function coerceList(value,allowed,aliases){
+    if(value==null)return [];
+    let raw;
+    if(Array.isArray(value))raw=value;
+    else{
+      const text=String(value).trim().replace(/^\[|\]$/g,'');
+      if(!text)return [];
+      raw=text.split(/[,，;；|/]+/);
+    }
+    const out=[];
+    raw.forEach(item=>{
+      const key=String(item).trim().toLowerCase().replace(/\s+/g,' ');
+      const mapped=aliases[key]||key;
+      if(allowed.includes(mapped)&&!out.includes(mapped))out.push(mapped);
+    });
+    return out;
+  }
+
+  function slugId(value){
+    return String(value||'').toLowerCase().normalize('NFKD')
+      .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40);
+  }
+
+  function firstLine(body){
+    const line=String(body||'').split(/\r?\n/).map(x=>x.trim()).find(Boolean)||'';
+    return line.replace(/^#{1,6}\s*/,'').replace(/^[-*+]\s+/,'').slice(0,120);
+  }
+
+  function draftFromImport(item,index,fileName){
+    if(typeof item==='string')item={body:item};
+    if(!item||typeof item!=='object'||Array.isArray(item))throw Error('第 '+(index+1)+' 条不是技能对象');
+    const body=String(item.body??item.content??item.text??item.markdown??item.prompt??item.instructions??'').trim();
+    const name=String(item.name||item.title||item.displayName||item['display-name']||('技能 '+(index+1))).trim();
+    const description=String(item.description||item.summary||firstLine(body)||('批量导入：'+name)).trim().slice(0,200);
+    const id=String(item.id||item.slug||slugId(name)||('custom-'+(index+1))).trim();
+    const kinds=coerceList(item.kinds??item.kind,ALL_KINDS,KIND_ALIASES);
+    const stages=coerceList(item.stages??item.stage,ALL_STAGES,STAGE_ALIASES);
+    return {id,name,description,body,kinds,stages,source:fileName,error:body?'':'正文为空'};
+  }
+
+  function splitHeadingSections(src){
+    const sections=[];
+    let current=null,fence=false;
+    const flush=()=>{if(current)sections.push({title:current.title,body:current.lines.join('\n').trim()});current=null;};
+    String(src).split(/\r?\n/).forEach(line=>{
+      if(/^\s*(```|~~~)/.test(line))fence=!fence;
+      if(!fence){
+        const m=/^##\s+(.+?)\s*$/.exec(line);
+        if(m){flush();current={title:m[1],lines:[]};return;}
+      }
+      if(current)current.lines.push(line);
+    });
+    flush();
+    return sections;
+  }
+
+  function splitFrontMatterBlocks(src){
+    const re=/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*?)(?=^---\r?\n|(?![\s\S]))/gm;
+    const blocks=[];
+    let m;
+    while((m=re.exec(src))){
+      const meta=parseMeta(m[1]);
+      if(!meta.name&&!meta.id&&!meta.description)return [];
+      blocks.push({meta,body:m[2].trim()});
+    }
+    return blocks.length>=2?blocks:[];
+  }
+
+  function cleanHeading(value){
+    return String(value||'').replace(/^(?:技能|skill)\s*[:：]\s*/i,'').replace(/^\d+[.、)]\s*/,'').trim();
+  }
+
+  function parseMarkdownPack(src,fileName,split){
+    const fileBase=String(fileName||'').replace(/\.[^.]+$/,'').trim();
+    let sections=[],format='markdown-single',note='';
+    if(split==='single'){
+      sections=[{title:'',body:src}];
+    }else if(split!=='heading'){
+      const blocks=splitFrontMatterBlocks(src);
+      const globalFront=/^---\r?\n[\s\S]*?\r?\n---\r?\n?/.test(String(src||'').replace(/^\uFEFF/,''));
+      if(blocks.length>=2){
+        sections=blocks;format='markdown-frontmatter';
+      }else if(globalFront){
+        sections=[{title:'',body:src}];
+        note='检测到单份 --- 元数据，整篇作为一条技能；多技能包请选「按 ## 标题拆分」。';
+      }else{
+        const heads=splitHeadingSections(src);
+        if(heads.length){
+          sections=heads;format='markdown-heading';
+          if(heads.length===1)note='只识别到一个 ## 标题，按一条技能读取。';
+        }else{
+          sections=[{title:'',body:src}];
+          note='没有识别到 ## 分节或成组的 --- 元数据块，整篇按一条技能读取。';
+        }
+      }
+    }else{
+      const heads=splitHeadingSections(src);
+      if(heads.length){
+        sections=heads;format='markdown-heading';
+        if(heads.length===1)note='只识别到一个 ## 标题，按一条技能读取。';
+      }else{
+        sections=[{title:'',body:src}];
+        note='没有识别到 ## 标题，整篇按一条技能读取。';
+      }
+    }
+    const items=sections.map((section,index)=>{
+      const parsed=parseFront(section.body);
+      const meta={...(section.meta||{}),...parsed.meta};
+      const body=parsed.body.replace(/\n---+\s*$/,'').trim();
+      const heading=cleanHeading(section.title||meta.name||meta.title||'');
+      const fallback=fileBase||('技能 '+(index+1));
+      return draftFromImport({...meta,name:meta.name||heading||fallback,body},index,fileName);
+    });
+    return {format,items,note};
+  }
+
+  function parseJsonPack(src,fileName){
+    let raw;
+    try{
+      raw=JSON.parse(src);
+    }catch(error){
+      const lines=src.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+      if(lines.length>1&&lines.every(line=>line.startsWith('{'))){
+        try{raw=lines.map(line=>JSON.parse(line));}
+        catch(_){throw Error('JSON 解析失败：'+error.message);}
+      }else throw Error('JSON 解析失败：'+error.message);
+    }
+    let list;
+    if(Array.isArray(raw))list=raw;
+    else if(raw&&Array.isArray(raw.skills))list=raw.skills;
+    else if(raw&&Array.isArray(raw.items))list=raw.items;
+    else if(raw&&raw.skill)list=Array.isArray(raw.skill)?raw.skill:[raw.skill];
+    else if(raw&&typeof raw==='object')list=[raw];
+    else throw Error('JSON 里没有技能对象');
+    if(!list.length)throw Error('JSON 里没有识别到技能');
+    const items=list.map((item,index)=>{
+      try{return draftFromImport(item,index,fileName);}
+      catch(error){return {id:'invalid-'+(index+1),name:'第 '+(index+1)+' 条',description:'',body:'',kinds:[],stages:[],source:fileName,error:error.message};}
+    });
+    return {format:Array.isArray(raw)?'json-array':(Array.isArray(raw.skills)?'json-skills':(Array.isArray(raw.items)?'json-items':'json-object')),items,note:''};
+  }
+
+  function parsePack(text,fileName,options){
+    const src=String(text||'').replace(/^\uFEFF/,'');
+    if(!src.trim())throw Error('文件是空的');
+    const split=(options&&options.split)||'auto';
+    const name=String(fileName||'粘贴内容');
+    const looksJson=/\.json$/i.test(name)||/^\s*[\[{]/.test(src);
+    if(looksJson){
+      try{return parseJsonPack(src,name);}
+      catch(error){if(/\.json$/i.test(name))throw error;}
+    }
+    return parseMarkdownPack(src,name,split);
   }
 
   const builtinMeta={};
@@ -3757,8 +4011,8 @@ globalThis.RPStudioBundle={"version":"0.4.0","policy":{"version":"0.4.0","id":"c
     return true;
   }
 
-  function saveCustom(rec,enable){
-    const next={
+  function normalizedCustom(rec){
+    return {
       id:String(rec.id||'').trim(),
       name:String(rec.name||'').trim(),
       description:String(rec.description||'').trim(),
@@ -3768,10 +4022,27 @@ globalThis.RPStudioBundle={"version":"0.4.0","policy":{"version":"0.4.0","id":"c
       createdAt:rec.createdAt||new Date().toISOString(),
       updatedAt:new Date().toISOString()
     };
-    const i=state.custom.findIndex(x=>x.id===next.id);
-    if(i>=0)state.custom[i]=next;else state.custom.push(next);
-    setEnabled(next.id,enable!==false);
-    return persist();
+  }
+
+  function saveCustomBatch(records,enable){
+    const ids=[];
+    (Array.isArray(records)?records:[]).forEach(rec=>{
+      const next=normalizedCustom(rec);
+      if(!next.id||BUILTIN_IDS.includes(next.id))return;
+      const i=state.custom.findIndex(x=>x.id===next.id);
+      if(i>=0)state.custom[i]={...next,createdAt:state.custom[i].createdAt||next.createdAt};
+      else state.custom.push(next);
+      ids.push(next.id);
+    });
+    if(!ids.length)return 0;
+    const set=new Set(state.disabled);
+    ids.forEach(id=>{if(enable===false)set.add(id);else set.delete(id);});
+    state.disabled=Array.from(set);
+    return persist()?ids.length:0;
+  }
+
+  function saveCustom(rec,enable){
+    return saveCustomBatch([rec],enable)>0;
   }
 
   function removeCustom(id){
@@ -3811,8 +4082,8 @@ globalThis.RPStudioBundle={"version":"0.4.0","policy":{"version":"0.4.0","id":"c
 
   load();
   Z.skills={
-    list,idsFor,extraContext,body,summaryLine,setEnabled,saveCustom,removeCustom,resetEnabled,
-    inspect,parseFront,reload:load,escape,
+    list,idsFor,extraContext,body,summaryLine,setEnabled,saveCustom,saveCustomBatch,removeCustom,resetEnabled,
+    inspect,parseFront,parsePack,slugId,reload:load,escape,
     get state(){return JSON.parse(JSON.stringify(state))},
     KEY,STAGE_LABELS,KIND_LABELS,ALL_STAGES,ALL_KINDS,LABELS,BUILTIN_IDS
   };
@@ -3829,6 +4100,9 @@ globalThis.RPStudioBundle={"version":"0.4.0","policy":{"version":"0.4.0","id":"c
   let editingId='';
   let editingRecord=null;
   let statusTimer=0;
+  let batchSources=[];
+  let batchItems=[];
+  let batchNotes=[];
 
   function toast(msg){
     const el=$('#skills-status');
@@ -3984,15 +4258,206 @@ globalThis.RPStudioBundle={"version":"0.4.0","policy":{"version":"0.4.0","id":"c
     box.innerHTML=html;
   }
 
-  function uniqueCopyId(base){
-    const taken=new Set(Z.skills.list().map(x=>x.id));
-    let id=base;
+  function uniqueCopyId(base,extra){
+    const taken=new Set([...Z.skills.list().map(x=>x.id),...(extra||[])]);
+    const stem=String(base||'custom');
+    let id=stem;
     if(taken.has(id)){
       let n=2;
       while(taken.has(id+'-'+n))n++;
       id=id+'-'+n;
     }
     return id;
+  }
+
+  function batchDefaults(){
+    const pick=name=>[...document.querySelectorAll('input[name="'+name+'"]:checked')].map(x=>x.value);
+    return {kinds:pick('batch-kind'),stages:pick('batch-stage')};
+  }
+
+  function batchRowState(item,index,defaults,policy,taken){
+    const kinds=item.kinds&&item.kinds.length?item.kinds:defaults.kinds;
+    const stages=item.stages&&item.stages.length?item.stages:defaults.stages;
+    const draft={id:String(item.id||'').trim(),name:String(item.name||'').trim(),description:String(item.description||''),body:String(item.body||''),kinds,stages};
+    const base=Z.skills.inspect(draft,draft.id);
+    const errors=[];const warnings=[...base.warnings];
+    if(item.error)errors.push(item.error);
+    base.errors.forEach(x=>{if(!errors.includes(x))errors.push(x);});
+    const id=draft.id;
+    const builtin=Z.skills.BUILTIN_IDS.includes(id);
+    const exists=builtin||Z.skills.list().some(x=>x.id===id);
+    const duplicated=taken.has(id);
+    let finalId=id;
+    if(builtin){
+      errors.push('id 与内置技能冲突，换一个。');
+    }else if(exists||duplicated){
+      if(policy==='suffix'){
+        finalId=uniqueCopyId(id,taken);
+        warnings.push((exists?'已有同名 id':'本批有重复 id')+'，将存为 '+finalId);
+      }else if(policy==='skip'){
+        errors.push('id 已存在，按当前设置跳过。');
+      }else{
+        warnings.push(duplicated?'本批有重复 id，后面的会覆盖前面的。':'同名 id 将被覆盖。');
+      }
+    }
+    if(finalId&&!/^[a-z0-9][a-z0-9-]{1,47}$/.test(finalId))errors.push('最终 ID 必须是 2–48 位小写字母、数字或连字符，请改短。');
+    return {ok:errors.length===0,errors,warnings,finalId,draft,kinds,stages};
+  }
+
+  function evaluateBatch(){
+    const defaults=batchDefaults();
+    const policy=$('#batch-conflict')?$('#batch-conflict').value:'suffix';
+    const taken=new Set();
+    return batchItems.map((item,index)=>{
+      const state=batchRowState(item,index,defaults,policy,taken);
+      if(item.selected&&state.ok)taken.add(state.finalId);
+      return {...state,item,index};
+    });
+  }
+
+  function renderBatch(){
+    const host=$('#batch-preview');
+    const summary=$('#batch-summary');
+    if(!host||!summary)return;
+    if(!batchItems.length){
+      host.innerHTML='';
+      summary.textContent=batchNotes.length?batchNotes.join('；'):'选择文件或粘贴内容后点「解析预览」。';
+      $('#batch-import').disabled=true;
+      $('#batch-import').textContent='导入';
+      return;
+    }
+    const rows=evaluateBatch();
+    const ready=rows.filter(x=>x.item.selected&&x.ok).length;
+    const bad=rows.filter(x=>!x.ok).length;
+    host.innerHTML=rows.map(row=>{
+      const item=row.item;
+      const tags=[...new Set([...row.kinds.map(x=>Z.skills.KIND_LABELS[x]||x),...row.stages.map(x=>Z.skills.STAGE_LABELS[x]||x)])].map(x=>badge(x)).join('');
+      const status=row.errors.length?row.errors.join('；'):(!item.selected?'未勾选，不会导入':(row.warnings.length?row.warnings.join('；'):'可导入'));
+      const cls=row.errors.length?'is-error':(row.warnings.length?'is-warn':(item.selected?'is-ok':'is-muted'));
+      return '<article class="batch-item'+(row.errors.length?' is-error':'')+'" data-batch-index="'+row.index+'">'
+        +'<div class="batch-item-head"><label><input type="checkbox" data-batch-select'+(item.selected?' checked':'')+'> 第 '+(row.index+1)+' 条</label>'
+        +'<span>'+esc(item.source||'粘贴内容')+'</span><span class="batch-size">'+String(item.body||'').length+' 字</span></div>'
+        +'<div class="batch-grid"><label>名称<input type="text" data-batch-name value="'+esc(item.name||'')+'"></label>'
+        +'<label>ID<input type="text" data-batch-id value="'+esc(item.id||'')+'"></label></div>'
+        +'<div class="batch-tags">'+tags+'</div>'
+        +'<p class="batch-status '+cls+'">'+esc(status)+'</p>'
+        +'<details><summary>查看正文</summary><pre>'+esc(item.body||'（无正文）')+'</pre></details>'
+        +'</article>';
+    }).join('');
+    let msg='识别 '+batchItems.length+' 条 · 可导入 '+ready+' 条';
+    if(bad)msg+=' · '+bad+' 条需处理';
+    if(batchNotes.length)msg+=' · '+batchNotes.join('；');
+    summary.textContent=msg;
+    $('#batch-import').disabled=ready===0;
+    $('#batch-import').textContent=ready?('导入 '+ready+' 条'):'导入';
+  }
+
+  function parseBatchSources(extraNotes){
+    batchNotes=Array.isArray(extraNotes)?extraNotes.slice():[];
+    const split=$('#batch-split')?$('#batch-split').value:'auto';
+    batchItems=[];
+    batchSources.forEach(source=>{
+      try{
+        const pack=Z.skills.parsePack(source.text,source.name,{split});
+        pack.items.forEach(item=>batchItems.push({...item,selected:!item.error}));
+        if(pack.note)batchNotes.push(pack.note);
+      }catch(error){
+        batchNotes.push(source.name+'：'+(error.message||error));
+      }
+    });
+    renderBatch();
+    const preview=$('#batch-preview');
+    const grid=$('#batch-form .skills-form-grid');
+    if(preview&&grid&&preview.children.length){
+      const top=preview.getBoundingClientRect().top-grid.getBoundingClientRect().top+grid.scrollTop;
+      grid.scrollTop=Math.max(0,top-8);
+    }
+  }
+
+  function parseBatch(){
+    const text=$('#batch-text')?$('#batch-text').value.trim():'';
+    if(text)batchSources=[{name:'粘贴内容',text}];
+    if(!batchSources.length){
+      batchItems=[];
+      batchNotes=['先选择文件，或把内容粘贴到上面的输入框。'];
+      renderBatch();
+      return;
+    }
+    parseBatchSources();
+  }
+
+  async function loadBatchFiles(fileList){
+    const files=[...fileList];
+    if(!files.length)return;
+    const sources=[],notes=[];
+    for(const file of files){
+      try{sources.push({name:file.name,text:await file.text()});}
+      catch(error){notes.push(file.name+'：读取失败（'+(error.message||error)+'）');}
+    }
+    batchSources=sources;
+    const textarea=$('#batch-text');
+    if(textarea)textarea.value='';
+    parseBatchSources(notes);
+  }
+
+  function openBatch(){
+    batchSources=[];
+    batchItems=[];
+    batchNotes=[];
+    const textarea=$('#batch-text');
+    if(textarea)textarea.value='';
+    const files=$('#batch-files');
+    if(files)files.value='';
+    document.querySelectorAll('input[name="batch-kind"],input[name="batch-stage"]').forEach(x=>{x.checked=true;});
+    if($('#batch-split'))$('#batch-split').value='auto';
+    if($('#batch-conflict'))$('#batch-conflict').value='suffix';
+    if($('#batch-enable'))$('#batch-enable').checked=true;
+    renderBatch();
+    const dialog=$('#skills-batch-dialog');
+    if(dialog&&!dialog.open)dialog.showModal();
+  }
+
+  function importBatch(){
+    const rows=evaluateBatch().filter(row=>row.item.selected&&row.ok);
+    if(!rows.length)return;
+    const records=rows.map(row=>({...row.draft,id:row.finalId}));
+    const count=Z.skills.saveCustomBatch(records,$('#batch-enable').checked);
+    if(!count){toast('导入失败：浏览器本地存储不可用或已满。');return;}
+    const unique=new Set(records.map(x=>x.id)).size;
+    const skipped=batchItems.filter(x=>!x.selected).length;
+    const dialog=$('#skills-batch-dialog');
+    if(dialog)dialog.close();
+    render();
+    toast('已导入 '+count+' 条技能'+(unique<count?'（实际 '+unique+' 个，重复 id 已覆盖）':'')+(skipped?'，跳过 '+skipped+' 条':''));
+  }
+
+  function bindBatch(){
+    const preview=$('#batch-preview');
+    if(preview)preview.addEventListener('change',event=>{
+      const row=event.target.closest&&event.target.closest('[data-batch-index]');
+      if(!row)return;
+      const index=Number(row.dataset.batchIndex);
+      const item=batchItems[index];
+      if(!item)return;
+      if(event.target.matches('[data-batch-select]'))item.selected=event.target.checked;
+      else if(event.target.matches('[data-batch-name]'))item.name=event.target.value;
+      else if(event.target.matches('[data-batch-id]'))item.id=event.target.value.trim();
+      else return;
+      renderBatch();
+    });
+    const files=$('#batch-files');
+    if(files)files.addEventListener('change',event=>{loadBatchFiles(event.target.files).catch(error=>toast('读取文件失败：'+(error.message||error)));});
+    const split=$('#batch-split');
+    if(split)split.addEventListener('change',()=>{if(batchSources.length)parseBatchSources();});
+    ['batch-kind','batch-stage'].forEach(name=>{
+      document.querySelectorAll('input[name="'+name+'"]').forEach(x=>x.addEventListener('change',renderBatch));
+    });
+    const conflict=$('#batch-conflict');
+    if(conflict)conflict.addEventListener('change',renderBatch);
+    const parse=$('#batch-parse');
+    if(parse)parse.addEventListener('click',parseBatch);
+    const form=$('#batch-form');
+    if(form)form.addEventListener('submit',event=>{event.preventDefault();importBatch();});
   }
 
   function openDialog(rec,mode){
@@ -4050,6 +4515,9 @@ globalThis.RPStudioBundle={"version":"0.4.0","policy":{"version":"0.4.0","id":"c
     document.addEventListener('click',e=>{
       const hit=sel=>e.target.closest&&e.target.closest(sel);
       if(hit('#skills-add')){openDialog(null,'add');return;}
+      if(hit('#skills-batch')){openBatch();return;}
+      if(hit('[data-batch-close]')){$('#skills-batch-dialog').close();return;}
+      if(hit('#batch-parse')){parseBatch();return;}
       if(hit('[data-skill-close]')){$('#skills-dialog').close();return;}
       if(hit('#skills-all-on')){
         Z.skills.resetEnabled();
@@ -4107,7 +4575,11 @@ globalThis.RPStudioBundle={"version":"0.4.0","policy":{"version":"0.4.0","id":"c
         if(/\.json$/i.test(f.name)){
           const raw=JSON.parse(text);
           d=raw.skill||raw;
-          if(Array.isArray(d))d=d[0];
+          if(d&&Array.isArray(d.skills))d=d.skills;
+          if(Array.isArray(d)){
+            if(d.length>1)throw Error('这个文件含 '+d.length+' 条技能，请用「批量导入」。');
+            d=d[0];
+          }
         }else{
           const p=Z.skills.parseFront(text);
           const slug=(p.meta.name||f.name.replace(/\.(md|markdown)$/i,''))
@@ -4139,6 +4611,7 @@ globalThis.RPStudioBundle={"version":"0.4.0","policy":{"version":"0.4.0","id":"c
     });
 
     document.addEventListener('skills-changed',render);
+    bindBatch();
   }
 
   function mount(){
