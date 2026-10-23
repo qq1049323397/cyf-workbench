@@ -133,7 +133,7 @@ def value(name):
 notes=re.search(r'const WORKBENCH_RELEASE=(\{[^\n]+\});',src)
 if not notes: raise SystemExit('Missing WORKBENCH_RELEASE')
 # 内嵌的 WORKBENCH_RELEASE 里也带一份 version/build（打包时抄进去的，值是 dev）。
-   先展开它，再用页面常量覆盖，否则 release.json 的 build 会退回 dev。
+# 先展开它，再用页面常量覆盖，否则 release.json 的 build 会退回 dev。
 release={**json.loads(notes.group(1)),'version':value('WORKBENCH_VERSION'),'build':value('WORKBENCH_BUILD')}
 Path('release.json').write_text(json.dumps(release,ensure_ascii=False,indent=2)+'\n')
 check=json.loads(Path('release.json').read_text())
