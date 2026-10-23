@@ -8,15 +8,30 @@
  * 协议（工作台 → 桥）
  *   RPWB_CONFIG  {apiUrl, apiKey, model, qualityModel, balancedModel, fastModel, apiProviderId, customApiUrl}
  *   RPWB_IMPORT  {card}            要导入 RP-Hub 的角色卡 JSON
+ *   RPWB_RESET                     清空当前聊天，只留开场白
+ *   RPWB_SEND    {text}            往输入框写一句话并发出去
  *   RPWB_PING                      探活
  * 协议（桥 → 工作台）
  *   RPWB_READY       {token, revision}
  *   RPWB_CONFIGURED  {applied, keys}
  *   RPWB_IMPORTED    {name, via}
+ *   RPWB_RESET_DONE  {messages}
+ *   RPWB_SENT        {text}
  *   RPWB_ERROR       {message}
  *
  * 全部消息都发给 parent，且 targetOrigin 用 '*'：工作台是 file:// 打开的，
  * 它的 origin 是字符串 "null"，没法当 targetOrigin 用。
+ *
+ * ---------------------------------------------------------------------------
+ * v1.9.0 预览模式（URL 带 workbenchPreview=1）
+ * ---------------------------------------------------------------------------
+ * 目的：只看一张卡在 RP-Hub 实机里的效果（开场白、正则、世界书、UI 模板、状态栏），
+ * 不出现广场 / 生图 / 设置 / 预设。做法是「不 fork、不改 app.js」——
+ * 给 <html> 挂 rpwb-preview 类，再由 workbench-preview.css 按白名单收口。
+ *
+ * 谁先挂类：install-runtime.sh 在 index.html 的 <head> 写了一小段守卫（就地替换
+ * meta 那一行，不新增行），比 Vue 启动还早，所以不会先闪一下完整界面。
+ * 本文件再挂一次是兜底：旧运行时没装守卫时也能进预览。
  */
 (function () {
   'use strict';
@@ -24,8 +39,26 @@
   var params = new URLSearchParams(location.search || '');
   var TOKEN = params.get('workbenchToken') || '';
   var REVISION = params.get('workbenchRevision') || '';
+  var PREVIEW = params.get('workbenchPreview') === '1';
   var CONFIG_KEYS = ['apiUrl', 'apiKey', 'model', 'qualityModel', 'balancedModel', 'fastModel', 'apiProviderId', 'customApiUrl'];
   var READY_TIMEOUT = 15000;
+
+  // ---- 预览模式：尽早挂类、尽早挂样式 -------------------------------------
+
+  function enterPreview() {
+    if (!PREVIEW) return;
+    document.documentElement.classList.add('rpwb-preview');
+    // head 里已经有守卫时这里什么都不用做；旧运行时靠这一句也能进预览。
+    if (!document.getElementById('rpwb-preview-styles')) {
+      var link = document.createElement('link');
+      link.id = 'rpwb-preview-styles';
+      link.rel = 'stylesheet';
+      link.href = 'workbench-preview.css';
+      (document.head || document.documentElement).appendChild(link);
+    }
+  }
+
+  enterPreview();
 
   function framed() {
     try { return window.parent && window.parent !== window; } catch (e) { return false; }
@@ -95,6 +128,35 @@
     return list.map(function (c) {
       return (c && (c.name || (c.data && c.data.name))) || '';
     });
+  }
+
+  // ---- 预览模式：把视图钉在聊天上 ------------------------------------------
+
+  // 不能读 Vue 实例，只能看 DOM。.chat-view-root 在 index.html:108，
+  // 非聊天视图时被 Vue 用 v-show 打成 display:none。
+  function chatVisible() {
+    var el = document.querySelector('.chat-view-root');
+    if (!el) return false;
+    var cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+    var r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  }
+
+  // 导入链路必须先切到「角色卡管理」才能点「添加角色卡」（桥只能走 DOM），
+  // 导完要回到聊天，否则用户会停在一个被 CSS 藏掉的空页面上。
+  async function ensureChatView() {
+    if (!PREVIEW) return true;
+    if (chatVisible()) return true;
+    var trigger = document.querySelector('.app-nav-trigger');
+    if (trigger) trigger.click();
+    var item = await waitFor(function () {
+      var items = Array.prototype.slice.call(document.querySelectorAll('.app-navigation-item'));
+      return items.find(function (b) { return /聊天/.test(b.textContent || ''); }) || null;
+    }, 4000);
+    if (!item) return false;
+    item.click();
+    return !!(await waitUntil(function () { return chatVisible() ? true : null; }, 5000));
   }
 
   // ---- 配置同步 ----------------------------------------------------------
@@ -209,7 +271,52 @@
       return names.length > before.length && names.indexOf(name) >= 0 ? names : null;
     }, 10000);
     if (!landed) throw new Error('RP-Hub 没有接受这张角色卡，可能是卡片数据不合它的要求');
+    // 导入时为了让「添加角色卡」按钮存在，桥把人带到了角色管理页；预览模式下再送回聊天。
+    if (PREVIEW) await ensureChatView();
     post('RPWB_IMPORTED', { name: name, via: 'dom', count: landed.length });
+  }
+
+  // ---- 预览模式：回到开场 / 替用户说一句话 --------------------------------
+
+  async function resetChat() {
+    var clear = buttonMatching(/清空聊天/);
+    if (!clear) throw new Error('找不到 RP-Hub 的「清空聊天」按钮');
+    clear.click();
+    // 清空要过一次确认弹窗（app.js 的 confirmAction）。弹窗在预览模式下被 CSS 藏了，
+    // 但按钮还在 DOM 里，程序化 click 不受 display:none 影响。
+    var confirm = await waitFor(function () {
+      var buttons = Array.prototype.slice.call(document.querySelectorAll('button'));
+      return buttons.find(function (b) { return /^确认$/.test((b.textContent || '').trim()); }) || null;
+    }, 5000);
+    if (!confirm) throw new Error('清空聊天没有弹出确认框');
+    confirm.click();
+    // 清空后只剩开场白那一条（没有 first_mes 时是 0 条）。
+    // 0 是 falsy，不能直接拿数字当 waitUntil 的判据，包一层对象。
+    var settled = await waitUntil(function () {
+      var rows = document.querySelectorAll('[data-role]');
+      return rows.length <= 1 ? { n: rows.length } : null;
+    }, 8000);
+    var count = settled ? settled.n : document.querySelectorAll('[data-role]').length;
+    post('RPWB_RESET_DONE', { messages: count });
+  }
+
+  async function sendText(payload) {
+    var text = String((payload && payload.text) || '');
+    if (!text.trim()) throw new Error('没有要发送的文本');
+    var input = document.querySelector('textarea.island-input');
+    if (!input) throw new Error('找不到 RP-Hub 的输入框');
+    input.focus();
+    input.value = text;
+    // Vue 的 v-model 认的是 input 事件，直接改 value 它不会知道。
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    // 发送按钮的 disabled 绑在 userInput 上，Vue 更新是异步的，等它转过来。
+    var send = await waitFor(function () {
+      var b = document.querySelector('.island-send:not(.island-send--stop)');
+      return b && !b.disabled ? b : null;
+    }, 4000);
+    if (!send) throw new Error('发送按钮不可用，可能是工作台还没同步模型配置');
+    send.click();
+    post('RPWB_SENT', { text: text });
   }
 
   // ---- 启动与消息循环 ----------------------------------------------------
@@ -221,7 +328,11 @@
     var complained = false;
     var started = Date.now();
     for (;;) {
-      if (runtimeReady()) { post('RPWB_READY', {}); return; }
+      if (runtimeReady()) {
+        if (PREVIEW) ensureChatView();
+        post('RPWB_READY', {});
+        return;
+      }
       if (!complained && Date.now() - started > READY_TIMEOUT) {
         complained = true;
         fail('RP-Hub 界面启动很慢（已等 ' + Math.round(READY_TIMEOUT / 1000) + ' 秒），仍在等待…');
@@ -244,6 +355,8 @@
 
     if (data.type === 'RPWB_CONFIG') run(function () { return applyConfig(data.payload || data); });
     else if (data.type === 'RPWB_IMPORT') run(function () { return importCard(data.payload || data); });
+    else if (data.type === 'RPWB_RESET') run(function () { return resetChat(); });
+    else if (data.type === 'RPWB_SEND') run(function () { return sendText(data.payload || data); });
     else if (data.type === 'RPWB_PING') run(function () { post('RPWB_READY', {}); });
   });
 

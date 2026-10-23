@@ -1,0 +1,135 @@
+/*!
+ * workbench-preview.css —— CYF 工作台「实机预览」模式的白名单样式（v1.9.0）
+ *
+ * 只干一件事：把 RP-Hub 收成「一张卡的聊天窗」，别的全藏。
+ * 不做 fork、不碰 app.js，靠 <html class="rpwb-preview"> 这一层前缀挂上去。
+ *
+ * 写法是白名单，不是黑名单：
+ *   body            → 只留 #app
+ *   #app            → 只留 .app-main（导航、toast、所有模态框在这层被挡掉）
+ *   .app-main       → 只留 .chat-view-root（其余 12 个视图在这层被挡掉）
+ *   .chat-view-root → 工具栏按钮逐个放行
+ * 这样 RP-Hub 上游新加视图 / 新加按钮时，默认就是藏着的，不用回来补规则。
+ *
+ * 每个选择器都先在 RP-Hub 1.8.9 快照里 grep 过，行号写在旁边。
+ * 行号基准：RP-Hub-main/index.html 共 2551 行（install-runtime.sh 写入预览守卫后仍是 2551 行，
+ * 因为守卫是就地替换第 9 行的 meta，不新增行）；组件模板行号基准 assets/js/ui-components.js。
+ *
+ * 为什么要藏而不是删：隐藏后 DOM 仍在，桥的导入链路（点「前往角色管理」→「添加角色卡」→
+ * 往文件输入框塞卡）靠程序化 click 和 change 事件照样走得通；display:none 不影响这两件事。
+ * 删掉 DOM 就会把导入一起删掉。
+ */
+
+/* ------------------------------------------------------------------ *
+ * 第一层：body 下只留 #app
+ * 藏掉：开机动画 .entry-transition（index.html:59）、内联 SVG 符号表（index.html:31）、
+ *       所有 <script> 标签。
+ * 留：  #app（index.html:79）
+ * ------------------------------------------------------------------ */
+html.rpwb-preview body > *:not(#app) {
+    display: none !important;
+}
+
+/* ------------------------------------------------------------------ *
+ * 第二层：#app 下只留主容器
+ * 藏掉：
+ *   首次进入的「网站公告」弹层          → update-notification-modal（index.html:2445）
+ *   首次进入的「欢迎使用 RP Hub」引导   → user-setup-modal（index.html:2448）
+ *   其他全部模态框                      → index.html:2441 起的 Modals 区
+ *   导航面板                            → app-navigation（index.html:97），
+ *                                         内部 .app-navigation-layer（ui-components.js:385）、
+ *                                         #app-navigation-panel（ui-components.js:388）
+ *   toast 容器                          → index.html:84
+ * 留：  .app-main（index.html:103）
+ * ------------------------------------------------------------------ */
+html.rpwb-preview #app > *:not(.app-main) {
+    display: none !important;
+}
+
+/* 有些模态框走的是 fixed 遮罩（ui-components.js:617），父元素藏了也补一道，
+   防止上游哪天改成 teleport 到 body。 */
+html.rpwb-preview .app-modal-overlay {
+    display: none !important;
+}
+
+/* ------------------------------------------------------------------ *
+ * 第三层：主容器下只留聊天视图
+ * 藏掉另外 12 个视图：characters / generator / square / novel / settings / presets /
+ * uitemplates / regex / tools / usage / memory / worldinfo（index.html:872–2467）
+ * 留：  .chat-view-root（index.html:108）
+ * ------------------------------------------------------------------ */
+html.rpwb-preview .app-main > *:not(.chat-view-root) {
+    display: none !important;
+}
+
+/* ------------------------------------------------------------------ *
+ * 第四层：聊天视图内的「放行清单」
+ * ------------------------------------------------------------------ */
+
+/* 导航入口：聊天顶栏的汉堡按钮（index.html:216）、角色管理页的（index.html:879）。
+   藏了它，预览里就没有任何通往广场/设置/生图的入口。 */
+html.rpwb-preview .app-nav-trigger {
+    display: none !important;
+}
+
+/* 顶栏右侧只留「清空聊天」（index.html:250，.chat-header-button--danger）。
+   全屏按钮（index.html:239–248）藏掉——预览里它只会把工作台的 iframe 撑成整屏。 */
+html.rpwb-preview .chat-header-button {
+    display: none !important;
+}
+html.rpwb-preview .chat-header-button--danger {
+    display: inline-flex !important;
+}
+
+/* 输入框上方的用量条（index.html:702）。用户明确不要用量统计。 */
+html.rpwb-preview .island-usage {
+    display: none !important;
+}
+
+/* 输入栏工具条（index.html:803）默认全藏，只放两个：
+   - 上下文查看器（index.html:829）：看这一轮触发了哪些世界书，是验证世界书的关键入口
+   - 发送 / 停止（index.html:856 / 864，.island-send）
+   被自动藏掉的是：发送图片（index.html:806）、自动生图开关（index.html:818）、
+   剧情分支（index.html:836）、快捷面板（index.html:843）。 */
+html.rpwb-preview .island-toolbar button {
+    display: none !important;
+}
+html.rpwb-preview .island-toolbar button[title="上下文查看器"] {
+    display: grid !important;
+}
+html.rpwb-preview .island-toolbar button.island-send {
+    display: grid !important;
+}
+
+/* 快捷面板本体（index.html:716）。按钮藏了它打不开，但状态可能是上次会话留下的。 */
+html.rpwb-preview .chat-quick-panel {
+    display: none !important;
+}
+
+/* 消息操作栏（index.html:527）默认全藏，只放三个：
+   - 重新生成（index.html:531）
+   - 编辑（index.html:541）
+   - 删除（index.html:570）
+   被藏掉的是：复制（index.html:550）、从这里分支（index.html:561）、
+   风格命中详情（message-style-filter-button）。 */
+html.rpwb-preview .message-action-bar > button {
+    display: none !important;
+}
+html.rpwb-preview .message-action-bar > button[title="重新生成"],
+html.rpwb-preview .message-action-bar > button[title="编辑"],
+html.rpwb-preview .message-action-bar > button[title="删除"] {
+    display: inline-flex !important;
+}
+html.rpwb-preview .message-style-filter-button {
+    display: none !important;
+}
+
+/* ------------------------------------------------------------------ *
+ * 第五层：窄屏收口
+ * 390px 下只要不横向滚动。聊天消息区自己就是 overflow-x-hidden（index.html:255），
+ * 这里再压一道根节点，防止角色背景层 / 输入岛把宽度撑出视口。
+ * ------------------------------------------------------------------ */
+html.rpwb-preview,
+html.rpwb-preview body {
+    overflow-x: hidden;
+}
