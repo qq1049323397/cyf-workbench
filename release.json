@@ -1,6 +1,6 @@
 {
   "version": "1.9.1",
-  "build": "dev",
+  "build": "2026.10.23.2db602c",
   "title": "发布前最后一轮小修：内置快照升到 RP-Hub 2.0.0，界面工程师的产物真正进卡",
   "notes": [
     "① 内置 RP-Hub 快照从 1.8.9 升到 2.0.0（23 个文件，取自本机 RP-Hub-main；vendor、workbench-bridge.js、workbench-preview.css 不进快照，仍由 install-runtime.sh 铺）。旧快照的输入框没有 island 输入条，实机预览里「试一句话」发不出去；新快照下发送、回声、清空、回到开场都通过了。",
