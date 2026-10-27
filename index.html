@@ -261,7 +261,7 @@ body.module-import-open{overflow:hidden}.module-import-dialog{position:fixed;z-i
 /* Lightweight front-end access gate. This verifies a salted key, not server authorization. */
 (function(){
  'use strict';const Z=globalThis.Zaojing=globalThis.Zaojing||{};
- const WORKBENCH_ACCESS={"salt":"a47c3357d01e009ac2d9cbc137262c81","iterations":180000,"digest":"b1893b042e46cb933b8ccbca38d3741666f30d09dbf20d3f484ccfb27a8f1b7c"};
+ const WORKBENCH_ACCESS={"salt":"3e90f085a4b1a8e46006bd9f4cffae42","iterations":180000,"digest":"257957fc1f159934fa540be60046f20368969190e2282d44538f7205c58910fd"};
  const sessionKey='cyf.access.session';let dialog,resolveReady,unlocked=false;
  const ready=new Promise(resolve=>resolveReady=resolve);
  const sessionRead=()=>{try{return sessionStorage.getItem(sessionKey);}catch(_){return null;}};
@@ -4216,7 +4216,7 @@ ${SECTIONS[4]}只返回 JSON：
   const WORKBENCH_VERSION='2.0.1';
   /* 构建戳：由 tools/sync-site.sh 在同步时自动改写成「日期.sha」，手改这里没有意义。
      它存在的理由就是版本号看不出来的那件事——线上跑的到底是哪一次构建。 */
-  const WORKBENCH_BUILD='2026.10.26.b493aeb';
+  const WORKBENCH_BUILD='2026.10.27.b493aeb';
     const WORKBENCH_RELEASE={"version":"2.0.1","build":"dev","title":"世界书字数规则放宽：单条保底 500 字，质检退回改成在原稿上修改","notes":["① 世界书单条只要求至少 500 个汉字：大纲里给每条的字数改成建议值，写多写少都不再因此被退回，也取消了单条 1300 字的上限。全卡总字数仍按你填的目标来算，简易模式写完大纲还不够时，会自动按缺口追加新条目。","② 质检退回的条目改成在原稿上修改：同一条的几条意见合并成一次重写，写手能看到上一版正文，只改被点到的地方，不再从头重写；删掉越界内容后，只要正文还有 500 字以上，就不会再因为字数被标红。","③ 专业模式：主编采纳的审查意见会一并交给写手；返工后复审时，会要求审查只核对上次的意见有没有改好，新发现的问题写在理由里，不因此判不通过。","④ 执笔提示词里互相矛盾的字数要求已经去掉；条目质检也不再按字数区间退回，只看是否低于 500 字。"]};
   /* 注意：工厂函数里没有 root 这个变量（root 只是外层 IIFE 的参数），必须用 globalThis。 */
   try{globalThis.Zaojing=globalThis.Zaojing||{};globalThis.Zaojing.version=WORKBENCH_VERSION;globalThis.Zaojing.build=WORKBENCH_BUILD;globalThis.Zaojing.releaseNotes=WORKBENCH_RELEASE;}catch(_){ }
